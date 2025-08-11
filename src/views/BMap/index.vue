@@ -252,71 +252,91 @@ export default {
     openNavScheme(endLat, endLng) {
       const name = encodeURIComponent(this.currentLocationText || '目的地')
 
-      // 百度地图导航
-      const baiduUrl = `baidumap://map/direction?destination=latlng:${endLat},${endLng}|name:${name}&mode=driving&coord_type=bd09ll`
-
-      // 高德地图导航
-      const amapUrl = `amapuri://route/plan/?dlat=${endLat}&dlon=${endLng}&dname=${name}&t=0`
-
-      // Apple地图导航
-      const appleUrl = `http://maps.apple.com/?daddr=${endLat},${endLng}`
-
-      // Google地图导航
-      const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${endLat},${endLng}`
-
       console.log('尝试打开导航应用...')
+      console.log('目标坐标:', endLat, endLng)
+      console.log('地点名称:', this.currentLocationText || '目的地')
 
-      // 尝试打开百度地图
-      try {
-        const iframe = document.createElement('iframe')
-        iframe.style.display = 'none'
-        iframe.src = baiduUrl
-        document.body.appendChild(iframe)
-        setTimeout(() => {
-          document.body.removeChild(iframe)
-        }, 1000)
-        console.log('已尝试打开百度地图')
-      } catch (e) {
-        console.log('百度地图打开失败:', e)
-      }
+      // 创建导航选择弹窗
+      this.showNavigationOptions(endLat, endLng, name)
+    },
 
-      // 延迟尝试高德地图
-      setTimeout(() => {
-        try {
-          const iframe = document.createElement('iframe')
-          iframe.style.display = 'none'
-          iframe.src = amapUrl
-          document.body.appendChild(iframe)
-          setTimeout(() => {
-            document.body.removeChild(iframe)
-          }, 1000)
-          console.log('已尝试打开高德地图')
-        } catch (e) {
-          console.log('高德地图打开失败:', e)
+    // 显示导航选择弹窗
+    showNavigationOptions(endLat, endLng, name) {
+      // 创建弹窗元素
+      const modal = document.createElement('div')
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      `
+
+      const content = document.createElement('div')
+      content.style.cssText = `
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        max-width: 300px;
+        width: 90%;
+        text-align: center;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      `
+
+      content.innerHTML = `
+        <h3 style="margin: 0 0 20px 0; color: #333;">选择导航应用</h3>
+        <div style="margin-bottom: 15px;">
+          <button onclick="window.open('baidumap://map/direction?destination=latlng:${endLat},${endLng}|name:${name}&mode=driving&coord_type=bd09ll', '_blank')"
+                  style="width: 100%; padding: 12px; margin: 5px 0; background: #3D7EFF; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+            百度地图
+          </button>
+        </div>
+        <div style="margin-bottom: 15px;">
+          <button onclick="window.open('amapuri://route/plan/?dlat=${endLat}&dlon=${endLng}&dname=${name}&t=0', '_blank')"
+                  style="width: 100%; padding: 12px; margin: 5px 0; background: #00C800; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+            高德地图
+          </button>
+        </div>
+        <div style="margin-bottom: 15px;">
+          <button onclick="window.open('http://maps.apple.com/?daddr=${endLat},${endLng}', '_blank')"
+                  style="width: 100%; padding: 12px; margin: 5px 0; background: #007AFF; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+            Apple地图
+          </button>
+        </div>
+        <div style="margin-bottom: 20px;">
+          <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${endLat},${endLng}', '_blank')"
+                  style="width: 100%; padding: 12px; margin: 5px 0; background: #4285F4; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
+            Google地图
+          </button>
+        </div>
+        <button onclick="this.closest('.navigation-modal').remove()"
+                style="width: 100%; padding: 10px; background: #f5f5f5; color: #666; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;">
+          取消
+        </button>
+      `
+
+      content.className = 'navigation-modal'
+      modal.appendChild(content)
+      document.body.appendChild(modal)
+
+      // 点击背景关闭弹窗
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove()
         }
-      }, 500)
+      })
 
-      // 延迟尝试Apple地图
+      // 3秒后自动关闭弹窗
       setTimeout(() => {
-        try {
-          window.open(appleUrl, '_blank')
-          console.log('已尝试打开Apple地图')
-        } catch (e) {
-          console.log('Apple地图打开失败:', e)
+        if (document.body.contains(modal)) {
+          modal.remove()
         }
-      }, 1000)
-
-      // 延迟尝试Google地图
-      setTimeout(() => {
-        try {
-          window.open(googleUrl, '_blank')
-          console.log('已尝试打开Google地图')
-        } catch (e) {
-          console.log('Google地图打开失败:', e)
-        }
-      }, 1500)
-
-      this.$message.success('正在尝试打开导航应用...')
+      }, 10000)
     },
     initMap() {
       try {
