@@ -3,9 +3,6 @@ import Router from 'vue-router'
 
 Vue.use(Router)
 
-/* Layout */
-import Layout from '@/layout'
-
 /**
  * Note: sub-menu only appear when route children.length >= 1
  * Detail see: https://panjiachen.github.io/vue-element-admin-site/guide/essentials/router-and-nav.html
@@ -32,12 +29,6 @@ import Layout from '@/layout'
  */
 export const constantRoutes = [
   {
-    path: '/login',
-    component: () => import('@/views/login/index'),
-    hidden: true
-  },
-
-  {
     path: '/404',
     component: () => import('@/views/404'),
     hidden: true
@@ -45,27 +36,18 @@ export const constantRoutes = [
 
   {
     path: '/',
-    component: Layout,
-    redirect: '/home',
-    children: [{
-      path: 'home',
-      name: 'Home',
-      component: () => import('@/views/home/index'),
-      meta: { title: 'Home', icon: 'home' }
-    }]
+    redirect: '/BMap/index'
   },
 
   {
     path: '/BMap',
-    component: Layout,
-    children: [
-      {
-        path: 'index',
-        name: 'BMap',
-        component: () => import('@/views/BMap/index'),
-        meta: { title: 'BMap', icon: 'map' }
-      }
-    ]
+    redirect: '/BMap/index'
+  },
+  {
+    path: '/BMap/index',
+    name: 'BMap',
+    component: () => import('@/views/BMap/index'),
+    meta: { title: 'BMap', icon: 'map' }
   },
 
   // 404 page must be placed at the end !!!

@@ -67,9 +67,41 @@ div:focus {
   padding: 20px;
 }
 
-.ellipsis{ 
+.ellipsis{
   overflow: hidden;
   text-overflow:ellipsis;//文本溢出显示省略号
   white-space:nowrap;//文本不会换行（单行文本溢出）
   display: block;
+}
+
+/* Baidu Autocomplete dropdown: keep same width as input, no vertical gap, and above map */
+.tangram-suggestion-main {
+  z-index: 2000 !important;
+  margin-top: 0 !important;
+  box-sizing: border-box;
+}
+
+/* 禁止移动端页面缩放 */
+html, body {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* 禁止双击缩放 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 禁止长按选择文本 */
+* {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
