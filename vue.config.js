@@ -1,12 +1,11 @@
 'use strict'
 const path = require('path')
-const defaultSettings = require('./src/settings.js')
 
 function resolve(dir) {
   return path.join(__dirname, dir)
 }
 
-const name = defaultSettings.title || 'Vue Admin Web' // page title
+const name = '骑士助手' // page title
 
 // If your port is set to 80,
 // use administrator privileges to execute the command line.
@@ -32,23 +31,11 @@ module.exports = {
   devServer: {
     port: port,
     open: !1,
-    host: '192.168.10.115',
+    host: '172.20.10.2',
     overlay: {
       warnings: false,
       errors: true
-    },
-    proxy: {
-      // change xxx-api/login => mock/login
-      // detail: https://cli.vuejs.org/config/#devserver-proxy
-      [process.env.VUE_APP_BASE_API]: {
-        target: `http://127.0.0.1:${port}/mock`,
-        changeOrigin: true,
-        pathRewrite: {
-          ['^' + process.env.VUE_APP_BASE_API]: ''
-        }
-      }
-    },
-    after: require('./mock/mock-server.js')
+    }
   },
   configureWebpack: {
     // provide the app's title in webpack's name field, so that
@@ -64,22 +51,7 @@ module.exports = {
     config.plugins.delete('preload') // TODO: need test
     config.plugins.delete('prefetch') // TODO: need test
 
-    // set svg-sprite-loader
-    config.module
-      .rule('svg')
-      .exclude.add(resolve('src/icons'))
-      .end()
-    config.module
-      .rule('icons')
-      .test(/\.svg$/)
-      .include.add(resolve('src/icons'))
-      .end()
-      .use('svg-sprite-loader')
-      .loader('svg-sprite-loader')
-      .options({
-        symbolId: 'icon-[name]'
-      })
-      .end()
+
 
     // set preserveWhitespace
     config.module

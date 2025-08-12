@@ -49,8 +49,18 @@ export const constantRoutes = [
     component: () => import('@/views/BMap/index'),
     meta: { title: 'BMap', icon: 'map' }
   },
-
-  // 404 page must be placed at the end !!!
+  {
+    path: '/HeatMap/index',
+    name: 'HeatMap',
+    component: () => import('@/views/HeatMap/index'),
+    meta: { title: 'HeatMap', icon: 'map' }
+  },
+  {
+    path: '/ShopNav/index',
+    name: 'ShopNav',
+    component: () => import('@/views/shopNav/index'),
+    meta: { title: 'ShopNav', icon: 'map' }
+  },
   { path: '*', redirect: '/404', hidden: true }
 ]
 

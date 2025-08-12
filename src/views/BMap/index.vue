@@ -10,20 +10,36 @@
           <img src="@/assets/Frame.png" alt="Frame" class="frame-icon">
         </div>
       </div>
-      <div v-else class="search-header-content">
-        <div class="left-icon">
+      <div v-else>
+      <div class="search-header-content">
+        <div class="left-icon" @click="handleBack">
           <img src="@/assets/back.png" alt="返回" class="frame-icon">
         </div>
         <div class="search-adr">搜索位置</div>
       </div>
-    </div>
 
-    <!-- 路径规划头部 -->
-    <div v-if="isRoutePlanning" class="route-header">
-      <div class="route-header-content">
-        <img src="@/assets/back.png" alt="返回" class="back-icon" @click="goBack">
-        <span class="route-title">搜索位置</span>
+      <!-- 路径规划中间 -->
+      <div class="route-middle">
+        <div class="route-locations">
+          <div class="location-item start-location">
+            <div class="location-dot start-dot"></div>
+            <div class="location-text">{{ startLocationText }}</div>
+          </div>
+          <div class="location-divider"></div>
+          <div class="location-item end-location">
+            <div class="location-dot end-dot"></div>
+            <div class="location-text">{{ endLocationText }}</div>
+          </div>
+          <div class="swap-button" @click="swapLocations">
+            <div class="swap-icon">
+              <div class="swap-arrow up"></div>
+              <div class="swap-line"></div>
+              <div class="swap-arrow down"></div>
+            </div>
+          </div>
+        </div>
       </div>
+    </div>
     </div>
 
     <!-- 搜索框 -->
@@ -41,10 +57,30 @@
       </div>
     </div>
     <div v-else class="to-address">
-      <div class="search-adr">搜索位置</div>
+      <div class="search-adr"></div>
     </div>
 
-    dvie
+    <!-- 路径规划中间 -->
+    <div v-if="isRoutePlanning" class="route-middle">
+      <div class="route-locations">
+        <div class="location-item start-location">
+          <div class="location-dot start-dot"></div>
+          <div class="location-text">{{ startLocationText }}</div>
+        </div>
+        <div class="location-divider"></div>
+        <div class="location-item end-location">
+          <div class="location-dot end-dot"></div>
+          <div class="location-text">{{ endLocationText }}</div>
+        </div>
+        <div class="swap-button" @click="swapLocations">
+          <div class="swap-icon">
+            <div class="swap-arrow up"></div>
+            <div class="swap-line"></div>
+            <div class="swap-arrow down"></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 地图容器 -->
     <div id="map-container" class="map-container" />
@@ -89,6 +125,15 @@
     <div v-if="!isGoing" class="fixed-locate-button" @click="locateToCurrent">
       <img src="@/assets/position.png" alt="定位" class="loc-icon">
     </div>
+
+    <!-- 定位提示条 -->
+    <div v-if="showLocationTip" class="location-tip-bar">
+      <div class="tip-content">
+        <div class="tip-icon">!</div>
+        <div class="tip-text">未能获取到您的位置信息，去手动开启</div>
+      </div>
+      <button class="tip-button" @click="enableLocation">开启</button>
+    </div>
   </div>
 </template>
 
@@ -110,7 +155,18 @@ export default {
       distance: 0,
       isRoutePlanning: false,
       routeDistance: '',
-      routeTime: ''
+      routeTime: '',
+      showLocationTip: false,
+      locationPermission: 'prompt',
+      startLocationText: '我的位置',
+      endLocationText: '赛银国际广场西',
+      startPoint: null,
+      endPoint: null,
+      // 用户移动方向相关
+      lastLocation: null,
+      userHeading: 0, // 用户朝向角度（0-360度）
+      locationHistory: [], // 位置历史，用于计算方向
+      maxHistoryLength: 5 // 最大历史记录数
     }
   },
   computed: {
@@ -159,10 +215,12 @@ export default {
   },
   async mounted() {
     try {
-      await loadBMap('IZO6WlwgvqU4ebdouQugwwPloKjytgsN') // 加载引入BMap
+      await loadBMap('JZ7exm3yUlWSewreBHs0celsfohscaod') // 加载引入BMap
       // 添加延迟确保BMap API完全加载
       setTimeout(() => {
         this.initMap()
+        // 检查定位权限
+        this.checkLocationPermission()
       }, 1000)
     } catch (error) {
       console.error('地图初始化失败:', error)
@@ -183,31 +241,63 @@ export default {
         if (!path || path.length < 2) return
 
         // 在路径上每隔一定距离添加箭头
-        const arrowSpacing = 1000 // 每1公里添加一个箭头
+        const arrowSpacing = 600 // 每600米添加一个箭头，更密集
         const totalDistance = this.map.getDistance(path[0], path[path.length - 1])
         const numArrows = Math.max(1, Math.floor(totalDistance / arrowSpacing))
 
-        for (let i = 1; i < numArrows; i++) {
-          const index = Math.floor((i / numArrows) * (path.length - 1))
+        for (let i = 1; i <= numArrows; i++) {
+          const index = Math.floor((i / (numArrows + 1)) * (path.length - 1))
           if (index < path.length - 1) {
             const point1 = path[index]
             const point2 = path[index + 1]
 
-            // 计算箭头位置（在线段中点）
+            // 计算箭头位置（在线段中点，确保贴合线条）
             const midPoint = new window.BMap.Point(
               (point1.lng + point2.lng) / 2,
               (point1.lat + point2.lat) / 2
             )
 
-            // 计算箭头角度
-            const angle = Math.atan2(point2.lat - point1.lat, point2.lng - point1.lng) * 180 / Math.PI
+            // 计算从point1到point2的方向向量
+            const deltaLng = point2.lng - point1.lng
+            const deltaLat = point2.lat - point1.lat
 
-            // 创建箭头符号
+            // 计算垂直于路径方向的偏移量，让箭头更贴合线条
+            const pathLength = Math.sqrt(deltaLng * deltaLng + deltaLat * deltaLat)
+            if (pathLength > 0) {
+              // 计算单位向量
+              const unitLng = deltaLng / pathLength
+              const unitLat = deltaLat / pathLength
+
+              // 计算垂直偏移（向左偏移，因为箭头默认偏向右边）
+              const offsetDistance = 0.0006 // 增加向左偏移量，让箭头更贴合线条
+              const perpendicularLng = -unitLat * offsetDistance
+              const perpendicularLat = unitLng * offsetDistance
+
+              // 应用偏移
+              midPoint.lng += perpendicularLng
+              midPoint.lat += perpendicularLat
+            }
+
+            // 计算箭头角度 - 修正角度计算，确保箭头朝向正确
+
+            // 计算角度（弧度转角度）
+            let angle = Math.atan2(deltaLat, deltaLng) * 180 / Math.PI
+
+            // 标准化角度到0-360度范围
+            if (angle < 0) {
+              angle += 360
+            }
+
+            // BMap的箭头符号默认指向右侧(0度)，需要调整角度
+            // 由于BMap的坐标系和地理坐标系的差异，需要调整
+            angle = 90 - angle
+
+            // 创建白色箭头符号 - 调整尺寸和边框，让箭头更细更清晰
             const arrowSymbol = new window.BMap.Symbol(window.BMap_Symbol_SHAPE_FORWARD_OPEN_ARROW, {
-              scale: 0.6,
-              strokeColor: '#3D7EFF',
-              strokeWeight: 2,
-              fillColor: '#3D7EFF'
+              scale: 0.4, // 减小箭头尺寸，让箭头更细
+              strokeColor: '#FFFFFF', // 白色边框
+              strokeWeight: 2, // 减小边框粗细，让箭头更细
+              fillColor: '#FFFFFF' // 白色填充
             })
 
             // 创建箭头标记
@@ -223,12 +313,267 @@ export default {
         console.error('添加方向箭头失败:', e)
       }
     },
-    // 调用手机原生导航（优先百度、高德，Apple/Google 作为回退）
+    // 统一设置路线样式并添加方向箭头
+    stylePolyline(polyline) {
+      try {
+        if (!polyline) return
+        if (polyline.setStrokeColor) polyline.setStrokeColor('#3D7EFF')
+        if (polyline.setStrokeWeight) polyline.setStrokeWeight(8)
+        if (polyline.setStrokeOpacity) polyline.setStrokeOpacity(1)
+        this.addDirectionalArrows(polyline)
+      } catch (e) { /* ignore */ }
+    },
+    // 抽取的通用骑行路线规划
+    createAndRunRidingRoute(startPoint, endPoint) {
+      const riding = new window.BMap.RidingRoute(this.map, {
+        renderOptions: {
+          map: this.map,
+          autoViewport: true
+        },
+        onPolylinesSet: (routes) => {
+          try {
+            (routes || []).forEach(r => {
+              const ply = r.getPolyline ? r.getPolyline() : r
+              if (ply) this.stylePolyline(ply)
+            })
+          } catch (e) { /* ignore */ }
+        }
+      })
+
+      riding.search(startPoint, endPoint)
+
+      riding.setSearchCompleteCallback((results) => {
+        if (riding.getStatus() === window.BMAP_STATUS_SUCCESS) {
+          const plan = results.getPlan(0)
+          if (plan) {
+            this.routeDistance = plan.getDistance(true)
+            this.routeTime = plan.getDuration(true)
+          }
+        } else {
+          this.$message.error('路径规划失败')
+        }
+      })
+    },
+    // 调用手机原生导航（显示导航类型选择弹窗）
     startNativeNavigation() {
       try {
-        // 优先使用搜索的位置点，如果没有则使用地图中心点
+        // 显示导航类型选择弹窗
+        this.showNavigationTypeModal()
+      } catch (e) {
+        console.error('启动导航失败:', e)
+        this.$message.error('启动导航失败')
+      }
+    },
+    // 显示导航类型选择弹窗
+    showNavigationTypeModal() {
+      // 创建弹窗元素
+      const modal = document.createElement('div')
+      modal.id = 'navigation-type-modal'
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      `
+
+      // 弹窗内容
+      const modalContent = document.createElement('div')
+      modalContent.style.cssText = `
+        background: white;
+        width: 90%;
+        max-width: 400px;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        text-align: center;
+      `
+
+      // 弹窗标题
+      const title = document.createElement('h3')
+      title.textContent = '选择导航应用'
+      title.style.cssText = `
+        margin: 0 0 20px 0;
+        color: #333;
+        font-size: 20px;
+        font-weight: 600;
+      `
+
+      // 导航选项容器
+      const optionsContainer = document.createElement('div')
+      optionsContainer.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 20px;
+      `
+
+      // 百度地图选项
+      const baiduOption = this.createNavigationOption('百度地图', '#3D7EFF', 'baidu')
+
+      // 高德地图选项
+      const amapOption = this.createNavigationOption('高德地图', '#00C853', 'amap')
+
+      // 腾讯地图选项
+      const tencentOption = this.createNavigationOption('腾讯地图', '#00A6FB', 'tencent')
+
+      optionsContainer.appendChild(baiduOption)
+      optionsContainer.appendChild(amapOption)
+      optionsContainer.appendChild(tencentOption)
+
+      // 取消按钮
+      const cancelBtn = document.createElement('button')
+      cancelBtn.textContent = '取消'
+      cancelBtn.style.cssText = `
+        width: 100%;
+        padding: 14px;
+        background: #f5f5f5;
+        color: #666;
+        border: none;
+        border-radius: 12px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      `
+
+      // 按钮悬停效果
+      cancelBtn.addEventListener('mouseenter', () => {
+        cancelBtn.style.background = '#e8e8e8'
+      })
+      cancelBtn.addEventListener('mouseleave', () => {
+        cancelBtn.style.background = '#f5f5f5'
+      })
+
+      modalContent.appendChild(title)
+      modalContent.appendChild(optionsContainer)
+      modalContent.appendChild(cancelBtn)
+      modal.appendChild(modalContent)
+      document.body.appendChild(modal)
+
+      // 绑定事件
+      cancelBtn.addEventListener('click', () => {
+        modal.remove()
+      })
+
+      // 点击背景关闭弹窗
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove()
+        }
+      })
+    },
+
+    // 绑定地图交互守卫，移动/缩放时不弹起输入框
+    bindMapInteractionGuards() {
+      try {
+        const inputEl = document.getElementById('searchInput')
+        if (!this.map || !inputEl) return
+        const blurInput = () => {
+          if (document.activeElement === inputEl) {
+            inputEl.blur()
+          }
+        }
+        this.map.addEventListener('dragstart', blurInput)
+        this.map.addEventListener('dragging', blurInput)
+        this.map.addEventListener('zoomstart', blurInput)
+        this.map.addEventListener('zoomend', blurInput)
+      } catch (e) { /* ignore */ }
+    },
+
+    // 创建导航选项
+    createNavigationOption(name, color, type) {
+      const option = document.createElement('div')
+      option.style.cssText = `
+        display: flex;
+        align-items: center;
+        padding: 16px 20px;
+        background: #f8f9fa;
+        border: 2px solid transparent;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        overflow: hidden;
+      `
+
+      // 悬停效果
+      option.addEventListener('mouseenter', () => {
+        option.style.background = '#f0f0f0'
+        option.style.borderColor = color
+        option.style.transform = 'translateY(-2px)'
+        option.style.boxShadow = `0 4px 12px rgba(0, 0, 0, 0.1)`
+      })
+
+      option.addEventListener('mouseleave', () => {
+        option.style.background = '#f8f9fa'
+        option.style.borderColor = 'transparent'
+        option.style.transform = 'translateY(0)'
+        option.style.boxShadow = 'none'
+      })
+
+      // 点击事件
+      option.addEventListener('click', () => {
+        this.startNavigationWithType(type)
+        document.getElementById('navigation-type-modal').remove()
+      })
+
+      // 图标
+      const icon = document.createElement('div')
+      icon.style.cssText = `
+        width: 40px;
+        height: 40px;
+        background: ${color};
+        border-radius: 10px;
+        margin-right: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 18px;
+        font-weight: bold;
+      `
+      icon.textContent = name.charAt(0)
+
+      // 名称
+      const nameText = document.createElement('span')
+      nameText.textContent = name
+      nameText.style.cssText = `
+        font-size: 16px;
+        color: #333;
+        font-weight: 500;
+        flex: 1;
+        text-align: left;
+      `
+
+      // 箭头
+      const arrow = document.createElement('div')
+      arrow.innerHTML = '→'
+      arrow.style.cssText = `
+        color: #ccc;
+        font-size: 18px;
+        font-weight: bold;
+      `
+
+      option.appendChild(icon)
+      option.appendChild(nameText)
+      option.appendChild(arrow)
+
+      return option
+    },
+
+    // 根据选择的导航类型启动导航
+    startNavigationWithType(type) {
+      try {
+        // 获取目标位置 - 优先使用交换后的终点坐标
         let endPoint = null
-        if (this.locationPoint && this.locationPoint.lng && this.locationPoint.lat) {
+        if (this.endPoint && this.endPoint.lng && this.endPoint.lat) {
+          endPoint = this.endPoint
+        } else if (this.locationPoint && this.locationPoint.lng && this.locationPoint.lat) {
           endPoint = this.locationPoint
         } else if (this.map && this.map.getCenter()) {
           endPoint = this.map.getCenter()
@@ -239,104 +584,245 @@ export default {
 
         const endLng = endPoint.lng
         const endLat = endPoint.lat
+        // 使用交换后的终点名称
+        const name = this.endLocationText || this.currentLocationText || '目的地'
 
-        console.log('开始导航到:', endLat, endLng)
+        console.log(`开始使用${type}导航到:`, endLat, endLng)
 
-        // 直接调用导航，不需要等待定位
-        this.openNavScheme(endLat, endLng)
+        switch (type) {
+          case 'baidu':
+            this.openBaiduNavigation(endLat, endLng, name)
+            break
+          case 'amap':
+            this.openAmapNavigation(endLat, endLng, name)
+            break
+          case 'tencent':
+            this.openTencentNavigation(endLat, endLng, name)
+            break
+          default:
+            this.$message.error('不支持的导航类型')
+        }
       } catch (e) {
         console.error('启动导航失败:', e)
         this.$message.error('启动导航失败')
       }
     },
-    openNavScheme(endLat, endLng) {
-      const name = encodeURIComponent(this.currentLocationText || '目的地')
 
-      console.log('尝试打开导航应用...')
-      console.log('目标坐标:', endLat, endLng)
-      console.log('地点名称:', this.currentLocationText || '目的地')
+    // 打开百度地图导航
+    openBaiduNavigation(endLat, endLng, name) {
+      try {
+        const baiduUrl = `baidumap://map/direction?destination=latlng:${endLat},${endLng}|name:${encodeURIComponent(name)}&mode=driving&coord_type=bd09ll`
+        const baiduWebUrl = `https://api.map.baidu.com/direction?destination=latlng:${endLat},${endLng}|name:${encodeURIComponent(name)}&mode=driving&coord_type=bd09ll&output=html&src=webapp.baidu.openAPIdemo`
 
-      // 创建导航选择弹窗
-      this.showNavigationOptions(endLat, endLng, name)
+        console.log('正在打开百度地图导航...')
+        console.log('百度地图URL:', baiduUrl)
+
+        // 首先尝试使用iframe打开百度地图应用
+        const iframe = document.createElement('iframe')
+        iframe.style.display = 'none'
+        iframe.src = baiduUrl
+        document.body.appendChild(iframe)
+
+        // 延迟后移除iframe
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe)
+          }
+        }, 1000)
+
+        // 延迟后尝试打开网页版作为备选方案
+        setTimeout(() => {
+          try {
+            window.open(baiduWebUrl, '_blank')
+            console.log('已尝试打开百度地图网页版作为备选')
+          } catch (webError) {
+            console.log('百度地图网页版打开失败:', webError)
+          }
+        }, 1500)
+
+        this.$message.success('正在打开百度地图...')
+      } catch (e) {
+        console.error('打开百度地图失败:', e)
+        this.$message.error('打开百度地图失败，请检查是否已安装')
+      }
     },
 
-    // 显示导航选择弹窗
-    showNavigationOptions(endLat, endLng, name) {
-      // 创建弹窗元素
-      const modal = document.createElement('div')
-      modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      `
+    // 坐标转换：BD09转GCJ02
+    bd09ToGcj02(bdLng, bdLat) {
+      const x = bdLng - 0.0065
+      const y = bdLat - 0.006
+      const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * Math.PI)
+      const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * Math.PI)
+      const gcjLng = z * Math.cos(theta)
+      const gcjLat = z * Math.sin(theta)
+      return { lng: gcjLng, lat: gcjLat }
+    },
 
-      const content = document.createElement('div')
-      content.style.cssText = `
-        background: white;
-        border-radius: 12px;
-        padding: 20px;
-        max-width: 300px;
-        width: 90%;
-        text-align: center;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      `
 
-      content.innerHTML = `
-        <h3 style="margin: 0 0 20px 0; color: #333;">选择导航应用</h3>
-        <div style="margin-bottom: 15px;">
-          <button onclick="window.open('baidumap://map/direction?destination=latlng:${endLat},${endLng}|name:${name}&mode=driving&coord_type=bd09ll', '_blank')"
-                  style="width: 100%; padding: 12px; margin: 5px 0; background: #3D7EFF; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-            百度地图
-          </button>
-        </div>
-        <div style="margin-bottom: 15px;">
-          <button onclick="window.open('amapuri://route/plan/?dlat=${endLat}&dlon=${endLng}&dname=${name}&t=0', '_blank')"
-                  style="width: 100%; padding: 12px; margin: 5px 0; background: #00C800; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-            高德地图
-          </button>
-        </div>
-        <div style="margin-bottom: 15px;">
-          <button onclick="window.open('http://maps.apple.com/?daddr=${endLat},${endLng}', '_blank')"
-                  style="width: 100%; padding: 12px; margin: 5px 0; background: #007AFF; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-            Apple地图
-          </button>
-        </div>
-        <div style="margin-bottom: 20px;">
-          <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${endLat},${endLng}', '_blank')"
-                  style="width: 100%; padding: 12px; margin: 5px 0; background: #4285F4; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-            Google地图
-          </button>
-        </div>
-        <button onclick="this.closest('.navigation-modal').remove()"
-                style="width: 100%; padding: 10px; background: #f5f5f5; color: #666; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;">
-          取消
-        </button>
-      `
 
-      content.className = 'navigation-modal'
-      modal.appendChild(content)
-      document.body.appendChild(modal)
+    // 打开高德地图导航
+    openAmapNavigation(endLat, endLng, name) {
+      try {
+        // 终点（BD09 -> GCJ02）
+        const endGcj = this.bd09ToGcj02(endLng, endLat)
+        const dlat = endGcj.lat
+        const dlon = endGcj.lng
 
-      // 点击背景关闭弹窗
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-          modal.remove()
+        // 起点优先级：this.startPoint -> this.locationPoint -> this.map.getCenter()
+        let startBdPoint = null
+        if (this.startPoint && this.startPoint.lng && this.startPoint.lat) {
+          startBdPoint = this.startPoint
+        } else if (this.locationPoint && this.locationPoint.lng && this.locationPoint.lat) {
+          startBdPoint = this.locationPoint
+        } else if (this.map && this.map.getCenter()) {
+          startBdPoint = this.map.getCenter()
         }
-      })
 
-      // 3秒后自动关闭弹窗
+        let slat = ''
+        let slon = ''
+        if (startBdPoint) {
+          const startGcj = this.bd09ToGcj02(startBdPoint.lng, startBdPoint.lat)
+          slat = startGcj.lat
+          slon = startGcj.lng
+        }
+
+        const sname = encodeURIComponent(this.startLocationText || '我的位置')
+        const dname = encodeURIComponent(name || this.endLocationText || '目的地')
+
+        // 高德 App 路由：显式传入起点与终点，dev=0 表示已是 GCJ02
+        const amapUrl = `amapuri://route/plan/?slat=${slat}&slon=${slon}&sname=${sname}&dlat=${dlat}&dlon=${dlon}&dname=${dname}&dev=0&t=0`
+
+        // 高德 Web 备选：同时传入 from 与 to
+        const amapWebUrl = `https://uri.amap.com/navigation?from=${slon},${slat},${sname}&to=${dlon},${dlat},${dname}&mode=car&policy=1&src=mypage&coordinate=gaode&callnative=0`
+
+        console.log('正在打开高德地图导航...')
+        console.log('高德 App URL:', amapUrl)
+        console.log('高德 Web URL:', amapWebUrl)
+
+        // 首先尝试使用iframe打开高德地图应用
+        const iframe = document.createElement('iframe')
+        iframe.style.display = 'none'
+        iframe.src = amapUrl
+        document.body.appendChild(iframe)
+
+        // 延迟后移除iframe
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe)
+          }
+        }, 1000)
+
+        // 延迟后尝试打开网页版作为备选方案
+        setTimeout(() => {
+          try {
+            window.open(amapWebUrl, '_blank')
+            console.log('已尝试打开高德地图网页版作为备选')
+          } catch (webError) {
+            console.log('高德地图网页版打开失败:', webError)
+          }
+        }, 1500)
+
+        this.$message.success('正在打开高德地图...')
+      } catch (e) {
+        console.error('打开高德地图失败:', e)
+        this.$message.error('打开高德地图失败，请检查是否已安装')
+      }
+    },
+
+    // 打开腾讯地图导航
+    openTencentNavigation(endLat, endLng, name) {
+      try {
+        // 将百度地图的BD09坐标转换为腾讯地图的GCJ02坐标
+        const gcj02Coord = this.bd09ToGcj02(endLng, endLat)
+        const gcj02Lat = gcj02Coord.lat
+        const gcj02Lng = gcj02Coord.lng
+
+        console.log('原始BD09坐标:', endLat, endLng)
+        console.log('转换后GCJ02坐标:', gcj02Lat, gcj02Lng)
+
+        const tencentUrl = `qqmap://map/routeplan?type=drive&tocoord=${gcj02Lat},${gcj02Lng}&to=${encodeURIComponent(name)}&coord_type=1&policy=0`
+        const tencentWebUrl = `https://apis.map.qq.com/uri/v1/routeplan?type=drive&tocoord=${gcj02Lat},${gcj02Lng}&to=${encodeURIComponent(name)}&coord_type=1&policy=0&referer=myapp`
+
+        console.log('正在打开腾讯地图导航...')
+        console.log('腾讯地图URL:', tencentUrl)
+
+        // 首先尝试使用iframe打开腾讯地图应用
+        const iframe = document.createElement('iframe')
+        iframe.style.display = 'none'
+        iframe.src = tencentUrl
+        document.body.appendChild(iframe)
+
+        // 延迟后移除iframe
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe)
+          }
+        }, 1000)
+
+        // 延迟后尝试打开网页版作为备选方案
+        setTimeout(() => {
+          try {
+            window.open(tencentWebUrl, '_blank')
+            console.log('已尝试打开腾讯地图网页版作为备选')
+          } catch (webError) {
+            console.log('腾讯地图网页版打开失败:', webError)
+          }
+        }, 1500)
+
+        this.$message.success('正在打开腾讯地图...')
+      } catch (e) {
+        console.error('打开腾讯地图失败:', e)
+        this.$message.error('打开腾讯地图失败，请检查是否已安装')
+      }
+    },
+
+    openNavScheme(endLat, endLng) {
+      const name = encodeURIComponent(this.selectedLocationText || this.currentLocationText || '目的地')
+
+      // 百度地图导航
+      const baiduUrl = `baidumap://map/direction?destination=latlng:${endLat},${endLng}|name:${name}&mode=driving&coord_type=bd09ll`
+
+      // 高德地图导航 - 需要坐标转换
+      const gcj02Coord = this.bd09ToGcj02(endLng, endLat)
+      const amapUrl = `amapuri://route/plan/?dlat=${gcj02Coord.lat}&dlon=${gcj02Coord.lng}&dname=${name}&t=0`
+
+      console.log('坐标转换信息:')
+      console.log('原始BD09坐标:', endLat, endLng)
+      console.log('转换后GCJ02坐标:', gcj02Coord.lat, gcj02Coord.lng)
+
+      console.log('尝试打开导航应用...')
+
+      // 尝试打开百度地图
+      try {
+        const iframe = document.createElement('iframe')
+        iframe.style.display = 'none'
+        iframe.src = baiduUrl
+        document.body.appendChild(iframe)
+        setTimeout(() => {
+          document.body.removeChild(iframe)
+        }, 1000)
+        console.log('已尝试打开百度地图')
+      } catch (e) {
+        console.log('百度地图打开失败:', e)
+      }
+
+      // 延迟尝试高德地图
       setTimeout(() => {
-        if (document.body.contains(modal)) {
-          modal.remove()
+        try {
+          const iframe = document.createElement('iframe')
+          iframe.style.display = 'none'
+          iframe.src = amapUrl
+          document.body.appendChild(iframe)
+          setTimeout(() => {
+            document.body.removeChild(iframe)
+          }, 1000)
+          console.log('已尝试打开高德地图')
+        } catch (e) {
+          console.log('高德地图打开失败:', e)
         }
-      }, 10000)
+      }, 500)
+
+      this.$message.success('正在尝试打开导航应用...')
     },
     initMap() {
       try {
@@ -452,6 +938,8 @@ export default {
 
         // 获取当前位置（但不显示location-card）
         this.getCurrentLocationSilently()
+        // 地图交互时不弹起输入
+        this.bindMapInteractionGuards()
         this.initAutocomplete()
         // 初次渲染后同步一次联想下拉的宽度与位置
         this.$nextTick(() => this.updateSuggestionStyle())
@@ -472,20 +960,43 @@ export default {
         this.$message.error('浏览器不支持定位，使用默认位置')
         const defaultPoint = new window.BMap.Point(120.019, 30.274)
         this.map.panTo(defaultPoint)
-        this.createShopMarker(defaultPoint)
+        this.locationPoint = defaultPoint
+        this.startPoint = defaultPoint
+
         return
       }
+
+      // 检查定位权限
+      this.checkLocationPermission()
+
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const point = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
           this.map.panTo(point)
-          this.createShopMarker(point)
+          this.locationPoint = point
+          this.startPoint = point
+
+          // 定位成功，隐藏提示条
+          this.showLocationTip = false
         },
-        () => {
-          this.$message.error('获取当前位置失败，使用默认位置')
+        (error) => {
+          console.error('获取位置失败:', error)
+          // 无论何种错误，回落到默认中心
           const defaultPoint = new window.BMap.Point(120.019, 30.274)
           this.map.panTo(defaultPoint)
-          this.createShopMarker(defaultPoint)
+          this.locationPoint = defaultPoint
+          this.startPoint = defaultPoint
+
+          // 根据错误类型显示提示
+          if (error.code === 1) {
+            this.showLocationTip = true
+            this.locationPermission = 'denied'
+          } else if (error.code === 2) {
+            this.showLocationTip = true
+            this.locationPermission = 'unavailable'
+          } else {
+            this.$message.error('获取当前位置失败，使用默认位置')
+          }
         }
       )
     },
@@ -527,6 +1038,119 @@ export default {
       } catch (e) {
         // 忽略同步异常，避免打断主流程
       }
+    },
+
+    // 检查定位权限
+    checkLocationPermission() {
+      if (!navigator.permissions) {
+        // 浏览器不支持权限API，直接返回
+        return
+      }
+
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        this.locationPermission = result.state
+        if (result.state === 'denied') {
+          this.showLocationTip = true
+        } else if (result.state === 'granted') {
+          this.showLocationTip = false
+        }
+      }).catch(() => {
+        // 权限查询失败，忽略
+      })
+    },
+
+        // 开启定位功能
+    enableLocation() {
+      if (this.locationPermission === 'denied') {
+        // 用户之前拒绝了权限，引导用户手动开启
+        this.$message.info('请在浏览器设置中开启定位权限')
+
+        // 在安卓内嵌环境下，尝试调用原生方法
+        if (window.Android && window.Android.openLocationSettings) {
+          try {
+            window.Android.openLocationSettings()
+          } catch (e) {
+            console.log('调用原生方法失败')
+          }
+        }
+      } else {
+        // 重新尝试获取定位
+        this.locateToCurrent()
+      }
+    },
+
+    // 返回：重置到初始化状态
+    handleBack() {
+      try {
+        // 清空地图覆盖物与结果
+        if (this.map) {
+          this.map.clearOverlays()
+        }
+        // 重置内部状态
+        this.isGoing = false
+        this.isRoutePlanning = false
+        this.searchText = ''
+        this.showLocationCard = false
+        this.currentLocationText = '正在获取位置...'
+        this.distance = 0
+        this.routeDistance = ''
+        this.routeTime = ''
+        this.startLocationText = '我的位置'
+        this.endLocationText = ''
+        this.startPoint = null
+        this.endPoint = null
+        // 回到默认中心并重新定位
+        const defaultPoint = new window.BMap.Point(120.019, 30.274)
+        if (this.map) {
+          this.map.centerAndZoom(defaultPoint, 16)
+        }
+        // 重新静默定位与UI联动
+        this.getCurrentLocationSilently()
+      } catch (e) {
+        console.error('返回初始化失败:', e)
+      }
+    },
+
+        // 交换起点和终点
+    swapLocations() {
+      // 交换显示文本
+      const temp = this.startLocationText
+      this.startLocationText = this.endLocationText
+      this.endLocationText = temp
+
+      // 交换起点和终点坐标
+      if (this.startPoint && this.endPoint) {
+        const tempPoint = this.startPoint
+        this.startPoint = this.endPoint
+        this.endPoint = tempPoint
+      }
+
+      // 如果地图上有路径，重新计算路径
+      if (this.map && this.startPoint && this.endPoint) {
+        this.calculateRoute()
+      }
+
+      // 更新导航信息
+      this.updateNavigationInfo()
+    },
+
+    // 计算路径
+    calculateRoute() {
+      if (!this.map || !this.startPoint || !this.endPoint) {
+        return
+      }
+
+      // 清除之前的路径
+      this.map.clearOverlays()
+
+      // 使用通用方法
+      this.createAndRunRidingRoute(this.startPoint, this.endPoint)
+    },
+
+    // 更新导航信息
+    updateNavigationInfo() {
+      // 重新计算路径
+      this.calculateRoute()
     },
 
     getCurrentLocationSilently() {
@@ -637,142 +1261,66 @@ export default {
         return
       }
 
+      // 去这里：强制使用当前选中的点作为终点
+      if (this.locationPoint) {
+        this.endPoint = this.locationPoint
+        if (this.currentLocationText) {
+          this.endLocationText = this.currentLocationText
+        }
+      }
+
       this.isGoing = true
       // 获取当前位置
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
             const startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-            const endPoint = this.locationPoint || this.map.getCenter()
+            // 优先使用交换后的终点坐标，如果没有则使用默认值
+            const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
 
-            // 创建驾车路线规划实例
-            const driving = new window.BMap.DrivingRoute(this.map, {
-              renderOptions: {
-                map: this.map,
-                autoViewport: true
-              },
-              onPolylinesSet: (routes) => {
-                try {
-                  (routes || []).forEach(r => {
-                    const ply = r.getPolyline ? r.getPolyline() : r
-                    if (ply && ply.setStrokeColor) {
-                      ply.setStrokeColor('#3D7EFF')
-                      if (ply.setStrokeWeight) ply.setStrokeWeight(8)
-                      if (ply.setStrokeOpacity) ply.setStrokeOpacity(1)
-                      // 添加箭头
-                      this.addDirectionalArrows(ply)
-                    }
-                  })
-                } catch (e) { /* ignore */ }
-              },
-              policy: window.BMAP_DRIVING_POLICY_LEAST_TIME
-            })
+            // 保存起点和终点坐标
+            this.startPoint = startPoint
+            // 只有在endPoint还没有设置时才设置它，避免覆盖已设置的终点
+            if (!this.endPoint) {
+              this.endPoint = endPoint
+            }
 
-            // 开始路径规划
-            driving.search(startPoint, endPoint)
-
-            // 监听路径规划完成事件
-            driving.setSearchCompleteCallback((results) => {
-              if (driving.getStatus() === window.BMAP_STATUS_SUCCESS) {
-                const plan = results.getPlan(0)
-                if (plan) {
-                  this.routeDistance = plan.getDistance(true)
-                  this.routeTime = plan.getDuration(true)
-                }
-              } else {
-                this.$message.error('路径规划失败')
-              }
-            })
+      // 使用通用方法
+      this.createAndRunRidingRoute(this.startPoint, this.endPoint)
           },
-          (error) => {
+                    (error) => {
             console.error('获取当前位置失败:', error)
             // 使用EFC中心作为起点进行路径规划
             const startPoint = new window.BMap.Point(120.019, 30.274)
-            const endPoint = this.locationPoint || this.map.getCenter()
+            // 优先使用交换后的终点坐标，如果没有则使用默认值
+            const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
 
-            // 创建驾车路线规划实例
-            const driving = new window.BMap.DrivingRoute(this.map, {
-              renderOptions: {
-                map: this.map,
-                autoViewport: true
-              },
-              onPolylinesSet: (routes) => {
-                try {
-                  (routes || []).forEach(r => {
-                    const ply = r.getPolyline ? r.getPolyline() : r
-                    if (ply && ply.setStrokeColor) {
-                      ply.setStrokeColor('#3D7EFF')
-                      if (ply.setStrokeWeight) ply.setStrokeWeight(8)
-                      if (ply.setStrokeOpacity) ply.setStrokeOpacity(1)
-                      // 添加箭头
-                      this.addDirectionalArrows(ply)
-                    }
-                  })
-                } catch (e) { /* ignore */ }
-              },
-              policy: window.BMAP_DRIVING_POLICY_LEAST_TIME
-            })
+            // 保存起点和终点坐标
+            this.startPoint = startPoint
+            // 只有在endPoint还没有设置时才设置它，避免覆盖已设置的终点
+            if (!this.endPoint) {
+              this.endPoint = endPoint
+            }
 
-            // 开始路径规划
-            driving.search(startPoint, endPoint)
-
-            // 监听路径规划完成事件
-            driving.setSearchCompleteCallback((results) => {
-              if (driving.getStatus() === window.BMAP_STATUS_SUCCESS) {
-                const plan = results.getPlan(0)
-                if (plan) {
-                  this.routeDistance = plan.getDistance(true)
-                  this.routeTime = plan.getDuration(true)
-                }
-              } else {
-                this.$message.error('路径规划失败')
-              }
-            })
+      // 使用通用方法
+      this.createAndRunRidingRoute(startPoint, endPoint)
           }
         )
       } else {
         // 浏览器不支持定位，使用EFC中心作为起点进行路径规划
         const startPoint = new window.BMap.Point(120.019, 30.274)
-        const endPoint = this.locationPoint || this.map.getCenter()
+        // 优先使用交换后的终点坐标，如果没有则使用默认值
+        const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
 
-        // 创建驾车路线规划实例
-        const driving = new window.BMap.DrivingRoute(this.map, {
-          renderOptions: {
-            map: this.map,
-            autoViewport: true
-          },
-          onPolylinesSet: (routes) => {
-            try {
-              (routes || []).forEach(r => {
-                const ply = r.getPolyline ? r.getPolyline() : r
-                if (ply && ply.setStrokeColor) {
-                  ply.setStrokeColor('#3D7EFF')
-                  if (ply.setStrokeWeight) ply.setStrokeWeight(8)
-                  if (ply.setStrokeOpacity) ply.setStrokeOpacity(1)
-                  // 添加箭头
-                  this.addDirectionalArrows(ply)
-                }
-              })
-            } catch (e) { /* ignore */ }
-          },
-          policy: window.BMAP_DRIVING_POLICY_LEAST_TIME
-        })
+        // 保存起点和终点坐标
+        this.startPoint = startPoint
+        // 只有在endPoint还没有设置时才设置它，避免覆盖已设置的终点
+        if (!this.endPoint) {
+          this.endPoint = endPoint
+        }
 
-        // 开始路径规划
-        driving.search(startPoint, endPoint)
-
-        // 监听路径规划完成事件
-        driving.setSearchCompleteCallback((results) => {
-          if (driving.getStatus() === window.BMAP_STATUS_SUCCESS) {
-            const plan = results.getPlan(0)
-            if (plan) {
-              this.routeDistance = plan.getDistance(true)
-              this.routeTime = plan.getDuration(true)
-            }
-          } else {
-            this.$message.error('路径规划失败')
-          }
-        })
+      // 使用通用方法
+      this.createAndRunRidingRoute(startPoint, endPoint)
       }
     },
 
@@ -800,6 +1348,27 @@ export default {
           // 保存目标位置点
           this.locationPoint = point
 
+          // 同时设置为终点坐标（用于路径规划）
+          this.endPoint = point
+
+          // 如果还没有设置起点，尝试获取当前位置作为起点
+          if (!this.startPoint) {
+            if (navigator.geolocation) {
+              navigator.geolocation.getCurrentPosition(
+                (position) => {
+                  this.startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
+                },
+                () => {
+                  // 如果获取当前位置失败，使用默认起点
+                  this.startPoint = new window.BMap.Point(120.019, 30.274)
+                }
+              )
+            } else {
+              // 浏览器不支持定位，使用默认起点
+              this.startPoint = new window.BMap.Point(120.019, 30.274)
+            }
+          }
+
           // 添加商铺样式的标记
           this.createShopMarker(point)
 
@@ -808,6 +1377,23 @@ export default {
 
           // 获取详细地址信息
           this.getAddressFromPoint(point)
+
+          // 更新终点展示名称为搜索结果的地理名
+          try {
+            const geoForName = new window.BMap.Geocoder()
+            geoForName.getLocation(point, (result) => {
+              if (result) {
+                const placeName = (result.surroundingPois && result.surroundingPois.length)
+                  ? result.surroundingPois[0].title
+                  : (result.address ? result.address : this.searchText)
+                this.endLocationText = placeName
+              } else {
+                this.endLocationText = this.searchText
+              }
+            })
+          } catch (e) {
+            this.endLocationText = this.searchText
+          }
 
           // 计算并显示距离（并为目标点添加标记）
           this.calculateAndDisplayDistance(point)
@@ -883,6 +1469,27 @@ export default {
           this.currentLocationText = placeName
           this.showLocationCard = true
           this.computeDistanceSilent(point)
+
+          // 设置为终点坐标（用于路径规划）
+          this.endPoint = point
+
+          // 如果还没有设置起点，尝试获取当前位置作为起点
+          if (!this.startPoint) {
+            if (navigator.geolocation) {
+              navigator.geolocation.getCurrentPosition(
+                (position) => {
+                  this.startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
+                },
+                () => {
+                  // 如果获取当前位置失败，使用默认起点
+                  this.startPoint = new window.BMap.Point(120.019, 30.274)
+                }
+              )
+            } else {
+              // 浏览器不支持定位，使用默认起点
+              this.startPoint = new window.BMap.Point(120.019, 30.274)
+            }
+          }
 
           const content = `<div style=\"font-size:14px;color:#333;line-height:1.6;\">${placeName}</div>`
           const infoWindow = new window.BMap.InfoWindow(content, {
@@ -1193,9 +1800,7 @@ export default {
   z-index: 1000;
 }
 
-.location-info {
 
-}
 
 .location-text {
   font-size: 14px;
@@ -1296,7 +1901,6 @@ export default {
   height: 20px;
 }
 .to-address{
-  width: 340px;
   height: 109px;
 }
 
@@ -1367,6 +1971,190 @@ export default {
   width: 18px;
   height: 18px;
   border-radius: 0px;
+}
+
+/* 定位提示条样式 */
+.location-tip-bar {
+  position: fixed;
+  bottom: 65px;
+  left: 0;
+  width: 100%;
+  height: 37px;
+  background: #FFE2E0;
+  border-radius: 0px 0px 0px 0px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 1001;
+  box-sizing: border-box;
+}
+
+.tip-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tip-icon {
+  width: 16px;
+  height: 16px;
+  background: #FF4D4F;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.tip-text {
+  height: 16px;
+  font-family: PingFang SC, PingFang SC;
+  font-weight: 600;
+  font-size: 13px;
+  color: #E22A2A;
+  line-height: 16px;
+  letter-spacing: 1px;
+  text-align: center;
+  font-style: normal;
+  text-transform: none;
+}
+
+.tip-button {
+  background: #FF4D4F;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  height: 25px;
+  background: #FF4835;
+  border-radius: 10px 10px 10px 10px;
+  font-family: PingFang SC, PingFang SC;
+  font-weight: 600;
+  font-size: 13px;
+  color: #FFFFFF;
+}
+
+.tip-button:hover {
+  background: #FF7875;
+}
+
+.tip-button:active {
+  background: #F5222D;
+}
+
+/* 路径规划中间样式 */
+.route-middle {
+  width: 340px;
+  height: 109px;
+  margin-top: 13px;
+  padding: 0 16px;
+}
+
+.route-locations {
+  background: #FFFFFF;
+  border: 1px dashed #E0E0E0;
+  border-radius: 8px;
+  padding: 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.location-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 24px;
+}
+
+.location-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 2px; /* 微调垂直对齐 */
+}
+
+.start-dot {
+  background: #52C41A;
+}
+
+.end-dot {
+  background: #FF4D4F;
+}
+
+.location-text {
+  font-family: PingFang SC, PingFang SC;
+  font-weight: 500;
+  font-size: 14px;
+  color: #333333;
+  line-height: 24px; /* 与容器高度一致，确保垂直居中 */
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.location-divider {
+  height: 1px;
+  background: #F0F0F0;
+  margin: 0 20px;
+}
+
+.swap-button {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.swap-button:hover {
+  background: #F5F5F5;
+}
+
+.swap-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+}
+
+.swap-arrow {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+
+.swap-arrow.up {
+  border-bottom: 6px solid #999999;
+}
+
+.swap-arrow.down {
+  border-top: 6px solid #999999;
+}
+
+.swap-line {
+  width: 2px;
+  height: 4px;
+  background: #999999;
 }
 </style>
 

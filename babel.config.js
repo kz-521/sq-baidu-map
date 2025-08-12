@@ -4,7 +4,16 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 module.exports = {
-  plugins: plugins,
+  plugins: [
+    ...plugins,
+    [
+      'component',
+      {
+        libraryName: 'element-ui',
+        styleLibraryName: 'theme-chalk'
+      }
+    ]
+  ],
   presets: [
     '@vue/app'
   ]
