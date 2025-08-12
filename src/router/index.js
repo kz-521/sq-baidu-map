@@ -33,12 +33,10 @@ export const constantRoutes = [
     component: () => import('@/views/404'),
     hidden: true
   },
-
   {
     path: '/',
     redirect: '/BMap/index'
   },
-
   {
     path: '/BMap',
     redirect: '/BMap/index'
