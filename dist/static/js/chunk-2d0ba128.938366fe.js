@@ -1,1 +1,0 @@
-(window["webpackJsonp"]=window["webpackJsonp"]||[]).push([["chunk-2d0ba128"],{"363b":function(n,e,a){"use strict";a.r(e);var t=function(){var n=this,e=n.$createElement,a=n._self._c||e;return a("BMap")},c=[],o=a("9816"),p={name:"ShopNav",components:{BMap:o["default"]}},u=p,s=a("2877"),l=Object(s["a"])(u,t,c,!1,null,"725b9701",null);e["default"]=l.exports}}]);
