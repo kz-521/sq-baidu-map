@@ -1,8 +1,8 @@
-# vue-admin-web
+# sq-baidu-map
 > 该项目基于[@PanJiaChen](https://github.com/PanJiaChen) 的 [vue-admin-template](https://github.com/PanJiaChen/vue-admin-template) 项目进行开发。
 > 这是一个简单的 vue admin 管理后台。UI框架为 element-ui。用于分享一些前端案例
 
-[线上地址](http://marco-hui.github.io/vue-admin-web)
+[线上地址](http://marco-hui.github.io/sq-baidu-map)
 
 目前版本为 `v4.0+` 基于 `@vue/cli` 进行构建。
 
@@ -10,10 +10,10 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/marco-hui/vue-admin-web.git
+git clone https://github.com/marco-hui/sq-baidu-map.git
 
 # 进入项目目录
-cd vue-admin-web
+cd sq-baidu-map
 
 # 安装依赖
 npm install
