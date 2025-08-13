@@ -14,6 +14,6 @@ git add -A
 git commit -m 'deploy'
 
 # 部署到 https://<USERNAME>.github.io/<REPO>
-git push -f git@github.com:Marco-hui/hamster-chat.dns.army.git master:gh-pages
+git push -f git@github.com:Marco-hui/sq-baidu-map.git master:gh-pages
 
 cd -
