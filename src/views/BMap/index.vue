@@ -221,6 +221,8 @@ export default {
         this.initMap()
         // 检查定位权限
         this.checkLocationPermission()
+        // 页面加载完成后调用安卓的注入方法
+        this.callAndroidShowFullAd()
       }, 1000)
     } catch (error) {
       console.error('地图初始化失败:', error)
@@ -1425,6 +1427,9 @@ export default {
 
     // 搜索附近骑士驿站并添加标记
     searchNearbyStations() {
+      // 点击附近骑士驿站时调用安卓的注入方法
+      this.callAndroidShowFullAd()
+
       if (!this.map) return
       // 基准点：优先用搜索得到的点；否则当前位置；否则默认点
       let centerPoint = null
@@ -1583,6 +1588,24 @@ export default {
 
         // 同时给目标点添加一个商铺标记并绑定信息窗
         this.createShopMarker(targetPoint)
+      }
+    },
+
+    // 调用安卓的注入方法 showFullAdFromWeb
+    callAndroidShowFullAd() {
+      try {
+        // 检查是否在安卓WebView环境中
+        if (window.Android && typeof window.Android.showFullAdFromWeb === 'function') {
+          console.log('调用安卓注入方法: showFullAdFromWeb')
+          window.Android.showFullAdFromWeb()
+        } else if (window.showFullAdFromWeb && typeof window.showFullAdFromWeb === 'function') {
+          console.log('调用全局方法: showFullAdFromWeb')
+          window.showFullAdFromWeb()
+        } else {
+          console.log('安卓注入方法 showFullAdFromWeb 不可用')
+        }
+      } catch (error) {
+        console.error('调用安卓注入方法失败:', error)
       }
     }
   }
