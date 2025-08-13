@@ -129,7 +129,7 @@ export default {
     } catch (e) {
       console.error('热力图初始化失败:', e)
       console.error('错误详情:', e.message, e.stack)
-      this.$message && this.$message.error('热力图加载失败: ' + e.message)
+      this.$toast && this.$toast.fail('热力图加载失败: ' + e.message)
     }
   },
   methods: {
@@ -325,7 +325,7 @@ export default {
 
     enableLocation() {
       if (this.locationPermission === 'denied') {
-        this.$message && this.$message.info('请在浏览器/应用中开启定位权限')
+        this.$toast && this.$toast('请在浏览器/应用中开启定位权限')
         if (window.Android && window.Android.openLocationSettings) {
           try { window.Android.openLocationSettings() } catch (e) {}
         }

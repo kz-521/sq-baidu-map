@@ -158,7 +158,6 @@ export default {
       currentLocationText: '正在获取位置...',
       showLocationCard: false,
       locationPoint: null,
-      targetAddress: '',
       distance: 0,
       isRoutePlanning: false,
       routeDistance: '',
@@ -169,11 +168,6 @@ export default {
       endLocationText: '赛银国际广场西',
       startPoint: null,
       endPoint: null,
-      // 用户移动方向相关
-      lastLocation: null,
-      userHeading: 0, // 用户朝向角度（0-360度）
-      locationHistory: [], // 位置历史，用于计算方向
-      maxHistoryLength: 5, // 最大历史记录数
       // 站点标记集合：用于搜索前清理
       stationMarkers: []
     }
@@ -235,7 +229,7 @@ export default {
       }, 1000)
     } catch (error) {
       console.error('地图初始化失败:', error)
-      this.$message.error('地图加载失败')
+      this.$toast && this.$toast.fail('地图加载失败')
     }
   },
   methods: {
@@ -361,7 +355,7 @@ export default {
             this.routeTime = plan.getDuration(true)
           }
         } else {
-          this.$message.error('路径规划失败')
+          this.$toast && this.$toast.fail('路径规划失败')
         }
       })
     },
@@ -372,7 +366,7 @@ export default {
         this.showNavigationTypeModal()
       } catch (e) {
         console.error('启动导航失败:', e)
-        this.$message.error('启动导航失败')
+        this.$toast && this.$toast.fail('启动导航失败')
       }
     },
     // 显示导航类型选择弹窗
@@ -589,7 +583,7 @@ export default {
         } else if (this.map && this.map.getCenter()) {
           endPoint = this.map.getCenter()
         } else {
-          this.$message.error('未获取到目标位置')
+          this.$toast && this.$toast.fail('未获取到目标位置')
           return
         }
 
@@ -611,11 +605,11 @@ export default {
             this.openTencentNavigation(endLat, endLng, name)
             break
           default:
-            this.$message.error('不支持的导航类型')
+            this.$toast && this.$toast.fail('不支持的导航类型')
         }
       } catch (e) {
         console.error('启动导航失败:', e)
-        this.$message.error('启动导航失败')
+        this.$toast && this.$toast.fail('启动导航失败')
       }
     },
 
@@ -651,10 +645,10 @@ export default {
           }
         }, 1500)
 
-        this.$message.success('正在打开百度地图...')
+        this.$toast && this.$toast('正在打开百度地图...')
       } catch (e) {
         console.error('打开百度地图失败:', e)
-        this.$message.error('打开百度地图失败，请检查是否已安装')
+        this.$toast && this.$toast.fail('打开百度地图失败，请检查是否已安装')
       }
     },
 
@@ -733,10 +727,10 @@ export default {
           }
         }, 1500)
 
-        this.$message.success('正在打开高德地图...')
+        this.$toast && this.$toast('正在打开高德地图...')
       } catch (e) {
         console.error('打开高德地图失败:', e)
-        this.$message.error('打开高德地图失败，请检查是否已安装')
+        this.$toast && this.$toast.fail('打开高德地图失败，请检查是否已安装')
       }
     },
 
@@ -780,10 +774,10 @@ export default {
           }
         }, 1500)
 
-        this.$message.success('正在打开腾讯地图...')
+        this.$toast && this.$toast('正在打开腾讯地图...')
       } catch (e) {
         console.error('打开腾讯地图失败:', e)
-        this.$message.error('打开腾讯地图失败，请检查是否已安装')
+        this.$toast && this.$toast.fail('打开腾讯地图失败，请检查是否已安装')
       }
     },
 
@@ -833,7 +827,7 @@ export default {
         }
       }, 500)
 
-      this.$message.success('正在尝试打开导航应用...')
+      this.$toast && this.$toast('正在尝试打开导航应用...')
     },
     initMap() {
       try {
@@ -963,12 +957,12 @@ export default {
         }
       } catch (error) {
         console.error('地图初始化失败:', error)
-        this.$message.error('地图初始化失败')
+        this.$toast && this.$toast.fail('地图初始化失败')
       }
     },
     locateToCurrent() {
       if (!navigator.geolocation) {
-        this.$message.error('浏览器不支持定位，使用默认位置')
+        this.$toast && this.$toast.fail('浏览器不支持定位，使用默认位置')
         const defaultPoint = new window.BMap.Point(120.019, 30.274)
         this.map.panTo(defaultPoint)
         this.locationPoint = defaultPoint
@@ -1006,7 +1000,7 @@ export default {
             this.showLocationTip = true
             this.locationPermission = 'unavailable'
           } else {
-            this.$message.error('获取当前位置失败，使用默认位置')
+            this.$toast && this.$toast.fail('获取当前位置失败，使用默认位置')
           }
         }
       )
@@ -1074,7 +1068,7 @@ export default {
     enableLocation() {
       if (this.locationPermission === 'denied') {
         // 用户之前拒绝了权限，引导用户手动开启
-        this.$message.info('请在浏览器设置中开启定位权限')
+        this.$toast && this.$toast('请在浏览器设置中开启定位权限')
 
         // 在安卓内嵌环境下，尝试调用原生方法
         if (window.Android && window.Android.openLocationSettings) {
@@ -1268,7 +1262,7 @@ export default {
 
     startNavigation() {
       if (!this.map) {
-        this.$message.error('地图未初始化')
+        this.$toast && this.$toast.fail('地图未初始化')
         return
       }
 
@@ -1338,12 +1332,12 @@ export default {
     // 搜索地点功能
     searchLocation() {
       if (!this.searchText.trim()) {
-        this.$message.warning('请输入搜索内容')
+        this.$toast && this.$toast('请输入搜索内容')
         return
       }
 
       if (!this.map) {
-        this.$message.error('地图未初始化')
+        this.$toast && this.$toast.fail('地图未初始化')
         return
       }
 
@@ -1446,9 +1440,9 @@ export default {
           // 计算并显示距离
           this.calculateAndDisplayDistance(point)
 
-          this.$message.success('搜索成功')
+          this.$toast && this.$toast('搜索成功')
         } else {
-          this.$message.error('未找到该地址')
+          this.$toast && this.$toast.fail('未找到该地址')
         }
       }, '中国') // 限制搜索范围在中国
     },
@@ -1576,9 +1570,9 @@ export default {
           if (marker) this.stationMarkers.push(marker)
         })
 
-        this.$message.success(`已加载“骑士驿站”在附近的${limited.length}个结果`)
+        this.$toast && this.$toast(`已加载“骑士驿站”在附近的${limited.length}个结果`)
       }).catch(() => {
-        this.$message.error('附近骑士驿站搜索失败')
+        this.$toast && this.$toast.fail('附近骑士驿站搜索失败')
       })
     },
 
@@ -1698,11 +1692,7 @@ export default {
             const roundedDistance = Math.round(distance) // 四舍五入到整数
 
             // 显示距离信息
-            this.$message({
-              message: `距离您当前位置约${roundedDistance}米`,
-              type: 'info',
-              duration: 3000
-            })
+      this.$toast && this.$toast(`距离您当前位置约${roundedDistance}米`)
 
             // 也可以将距离保存到组件数据中，用于其他地方显示
             this.distance = roundedDistance
@@ -1717,11 +1707,7 @@ export default {
             const distance = this.map.getDistance(defaultPoint, targetPoint)
             const roundedDistance = Math.round(distance)
 
-            this.$message({
-              message: `距离EFC中心约${roundedDistance}米`,
-              type: 'info',
-              duration: 3000
-            })
+      this.$toast && this.$toast(`距离EFC中心约${roundedDistance}米`)
 
             this.distance = roundedDistance
 
@@ -1735,11 +1721,7 @@ export default {
         const distance = this.map.getDistance(defaultPoint, targetPoint)
         const roundedDistance = Math.round(distance)
 
-        this.$message({
-          message: `距离EFC中心约${roundedDistance}米`,
-          type: 'info',
-          duration: 3000
-        })
+    this.$toast && this.$toast(`距离EFC中心约${roundedDistance}米`)
 
         this.distance = roundedDistance
 
