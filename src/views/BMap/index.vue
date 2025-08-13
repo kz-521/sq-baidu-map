@@ -7,7 +7,7 @@
           <span class="title">附近骑士站点</span>
         </div>
         <div class="right-section">
-          <img src="@/assets/Frame.png" alt="Frame" class="frame-icon">
+          <img src="@/assets/Frame.png" alt="Frame" class="frame-icon" @click="locateToCurrent">
         </div>
       </div>
       <div v-else>
@@ -85,6 +85,11 @@
     <!-- 地图容器 -->
     <div id="map-container" class="map-container" />
 
+    <!-- 审图号信息 -->
+    <div class="map-license-info">
+      审图号：GS(2025)551号|GS（2025）2175号
+    </div>
+
     <!-- 位置信息卡片 -->
     <div v-if="showLocationCard" class="location-card">
       <div class="location-info">
@@ -126,6 +131,8 @@
       <img src="@/assets/position.png" alt="定位" class="loc-icon">
     </div>
 
+
+
     <!-- 定位提示条 -->
     <div v-if="showLocationTip" class="location-tip-bar">
       <div class="tip-content">
@@ -166,7 +173,9 @@ export default {
       lastLocation: null,
       userHeading: 0, // 用户朝向角度（0-360度）
       locationHistory: [], // 位置历史，用于计算方向
-      maxHistoryLength: 5 // 最大历史记录数
+      maxHistoryLength: 5, // 最大历史记录数
+      // 站点标记集合：用于搜索前清理
+      stationMarkers: []
     }
   },
   computed: {
@@ -919,10 +928,10 @@ export default {
         }]
 
         try {
-          this.map.setMapStyle({
+          this.map.setMapStyleV2({
             styleJson: mapStyle
           })
-          console.log('地图样式已应用，使用自定义样式')
+          console.log('地图样式已应用，使用自定义样式 V2')
         } catch (styleError) {
           console.error('样式应用失败:', styleError)
         }
@@ -1371,33 +1380,70 @@ export default {
             }
           }
 
-          // 添加商铺样式的标记
-          this.createShopMarker(point)
-
           // 设置地图中心点和缩放级别
           this.map.centerAndZoom(point, 16)
 
-          // 获取详细地址信息
+          // 获取详细地址信息（用于卡片）
           this.getAddressFromPoint(point)
 
-          // 更新终点展示名称为搜索结果的地理名
+          // 优先用本地搜索拿到与关键词最贴近的POI标题/地址，补充到标记信息中
           try {
-            const geoForName = new window.BMap.Geocoder()
-            geoForName.getLocation(point, (result) => {
-              if (result) {
-                const placeName = (result.surroundingPois && result.surroundingPois.length)
-                  ? result.surroundingPois[0].title
-                  : (result.address ? result.address : this.searchText)
-                this.endLocationText = placeName
-              } else {
-                this.endLocationText = this.searchText
+            const kw = (this.searchText || '').trim()
+            const stationReg = /骑士驿站|骑手驿站|外卖驿站/
+            const localSearch = new window.BMap.LocalSearch(this.map, { pageCapacity: 20 })
+            localSearch.setSearchCompleteCallback((rs) => {
+              try {
+                const pois = []
+                if (rs && rs.getCurrentNumPois) {
+                  const n = rs.getCurrentNumPois()
+                  for (let i = 0; i < n; i++) {
+                    const p = rs.getPoi(i)
+                    if (p && p.point && p.title) pois.push(p)
+                  }
+                }
+                // 先找标题包含“骑士驿站”等的POI；若无，再用标题最接近搜索词的POI
+                let candidate = pois.find(p => stationReg.test(p.title))
+                if (!candidate && kw) {
+                  candidate = pois
+                    .map(p => ({ p, score: Math.abs((p.title || '').length - kw.length) }))
+                    .sort((a, b) => a.score - b.score)
+                    .map(x => x.p)[0]
+                }
+
+                if (candidate) {
+                  this.endLocationText = candidate.title
+                  const metaPoi = { title: candidate.title, address: candidate.address || '' }
+                  this.createShopMarker(point, metaPoi)
+                  // 直接展示信息窗
+                  this.showStationInfo(metaPoi, point)
+                } else {
+                  // 回退：用逆地理名
+                  const geoForName = new window.BMap.Geocoder()
+                  geoForName.getLocation(point, (result) => {
+                    const placeName = (result && result.surroundingPois && result.surroundingPois.length)
+                      ? result.surroundingPois[0].title
+                      : (result && result.address ? result.address : this.searchText)
+                    this.endLocationText = placeName
+                    if (stationReg.test(placeName)) {
+                      const metaPoi2 = { title: placeName, address: (result && result.address) || '' }
+                      this.createShopMarker(point, metaPoi2)
+                      this.showStationInfo(metaPoi2, point)
+                    } else {
+                      this.createShopMarker(point)
+                    }
+                  })
+                }
+              } catch (inner) {
+                this.createShopMarker(point)
               }
             })
+            localSearch.searchNearby(kw || '骑士驿站', point, 1000)
           } catch (e) {
-            this.endLocationText = this.searchText
+            // 兜底：仅落点
+            this.createShopMarker(point)
           }
 
-          // 计算并显示距离（并为目标点添加标记）
+          // 计算并显示距离
           this.calculateAndDisplayDistance(point)
 
           this.$message.success('搜索成功')
@@ -1407,17 +1453,22 @@ export default {
       }, '中国') // 限制搜索范围在中国
     },
 
-    // 使用 shop.png 创建标记，并绑定点击展示信息
-    createShopMarker(point) {
+    // 使用 shop.png 创建标记，并绑定点击展示信息（可附带POI元信息）
+    createShopMarker(point, meta) {
       if (!this.map || !point) return
       try {
         const icon = new window.BMap.Icon(shopIcon, new window.BMap.Size(48, 56), {
           imageSize: new window.BMap.Size(48, 56)
         })
         const marker = new window.BMap.Marker(point, { icon })
+        marker.__poiMeta = meta || null
         this.map.addOverlay(marker)
         marker.addEventListener('click', () => {
-          this.showShopInfo(point)
+          if (marker.__poiMeta) {
+            this.showStationInfo(marker.__poiMeta, point)
+          } else {
+            this.showShopInfo(point)
+          }
         })
         return marker
       } catch (e) {
@@ -1440,24 +1491,95 @@ export default {
         centerPoint = this.map.getCenter() || new window.BMap.Point(120.019, 30.274)
       }
 
-      const center = centerPoint
-      const fiveKmInDeg = 5000 / 111000
+      const radius = 10000 // 10km 半径
+      // 按需求：点击“附近骑士驿站”仅展示“骑士驿站”的搜索结果
+      const keywords = ['骑士驿站']
+      const useStrictFilter = true
+      const excludeKeywords = ['菜鸟', '快递', '丰巢', '邮政', '代收', '自提'].map(k => k.toLowerCase())
 
-      const stations = []
-      // 简单模拟：在 5km 半径内随机生成若干点（并保证不超过 10km）
-      for (let i = 0; i < 8; i++) {
-        const r = Math.random() * fiveKmInDeg
-        const theta = Math.random() * Math.PI * 2
-        const dx = r * Math.cos(theta)
-        const dy = r * Math.sin(theta)
-        const lng = center.lng + dx
-        const lat = center.lat + dy
-        stations.push(new window.BMap.Point(lng, lat))
+      // 仅在未输入自定义查询时启用严格关键词过滤
+      const matchesKeywords = (poi) => {
+        try {
+          const title = (poi && (poi.title || poi.name)) ? (poi.title || poi.name) : ''
+          const normTitle = title.toLowerCase()
+          if (!useStrictFilter) return true
+          const includeHit = keywords.some(kw => kw && normTitle.includes(kw))
+          const excludeHit = excludeKeywords.some(ek => ek && normTitle.includes(ek))
+          return includeHit && !excludeHit
+        } catch (e) { return false }
       }
 
-      // 添加标记
-      stations.forEach(p => this.createShopMarker(p))
-      this.$message.success('已加载附近骑士驿站标记')
+      const searchNearby = (keyword) => new Promise((resolve) => {
+        try {
+          const localSearch = new window.BMap.LocalSearch(this.map, { pageCapacity: 50 })
+          localSearch.setSearchCompleteCallback((result) => {
+            const pois = []
+            try {
+              if (result && result.getCurrentNumPois) {
+                const num = result.getCurrentNumPois()
+                for (let i = 0; i < num; i++) {
+                  const poi = result.getPoi(i)
+                  if (!poi || !poi.point || !poi.point.lng || !poi.point.lat) continue
+                  // 严格过滤：仅保留“标题包含关键字”的POI
+                  if (!matchesKeywords(poi)) continue
+                  pois.push(poi)
+                }
+              }
+            } catch (e) { /* ignore */ }
+            resolve(pois)
+          })
+          localSearch.searchNearby(keyword, centerPoint, radius)
+        } catch (e) {
+          resolve([])
+        }
+      })
+
+      // 先清理上一次搜索产生的标记
+      try {
+        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (e) {} })
+      } catch (e) { /* ignore */ }
+      this.stationMarkers = []
+
+      Promise.allSettled(keywords.map(k => searchNearby(k))).then(results => {
+        const merged = new Map()
+        results.forEach(r => {
+          if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+            r.value.forEach(poi => {
+              // 优先使用uid去重，其次名称+坐标
+              const uid = poi.uid || poi.uidUnique || ''
+              const key = uid || `${poi.title || poi.name || ''}|${poi.point.lng.toFixed(5)}|${poi.point.lat.toFixed(5)}`
+              if (!merged.has(key)) merged.set(key, poi)
+            })
+          }
+        })
+
+        // 再次全量过滤，确保合并后仍满足关键词匹配
+        const stations = Array.from(merged.values()).filter(poi => matchesKeywords(poi))
+        // 可按距离排序（就近优先）
+        try {
+          stations.sort((a, b) => this.map.getDistance(centerPoint, a.point) - this.map.getDistance(centerPoint, b.point))
+        } catch (e) { /* ignore */ }
+
+        // 限制最大数量，避免过多覆盖物影响性能
+        const limited = stations.slice(0, 50)
+
+        // 视野自适应到结果范围
+        if (limited.length) {
+          try {
+            this.map.setViewport(limited.map(p => p.point))
+          } catch (e) { /* ignore */ }
+        }
+
+        // 创建并记录此次搜索的标记，方便下次清理
+        limited.forEach(poi => {
+          const marker = this.createShopMarker(poi.point, poi)
+          if (marker) this.stationMarkers.push(marker)
+        })
+
+        this.$message.success(`已加载“骑士驿站”在附近的${limited.length}个结果`)
+      }).catch(() => {
+        this.$message.error('附近骑士驿站搜索失败')
+      })
     },
 
     // 展示地点信息（信息窗）
@@ -1505,6 +1627,41 @@ export default {
         })
       } catch (e) {
         console.error('展示地点信息失败:', e)
+      }
+    },
+
+    // 展示骑士驿站POI信息（基于本地搜索返回的POI）
+    showStationInfo(poi, point) {
+      try {
+        const title = (poi && (poi.title || poi.name)) ? (poi.title || poi.name) : '骑士驿站'
+        const address = (poi && poi.address) ? poi.address : ''
+
+        // 同步底部卡片与终点
+        this.locationPoint = point
+        this.currentLocationText = title
+        this.endPoint = point
+        this.endLocationText = title
+        this.showLocationCard = true
+
+        // 计算距离
+        this.computeDistanceSilent(point)
+
+        // 信息窗内容
+        const content = `
+          <div style="font-size:14px;color:#333;line-height:1.6;">
+            <div style="font-weight:600;margin-bottom:4px;">${title}</div>
+            ${address ? `<div style=\"color:#666;\">${address}</div>` : ''}
+          </div>
+        `
+        const infoWindow = new window.BMap.InfoWindow(content, {
+          width: 260,
+          title: '骑士驿站'
+        })
+        this.map.openInfoWindow(infoWindow, point)
+      } catch (e) {
+        console.error('展示骑士驿站信息失败:', e)
+        // 回退到通用信息展示
+        this.showShopInfo(point)
       }
     },
 
@@ -1613,6 +1770,9 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+
+
+/* 地图容器样式 */
 .mobile-container {
   width: 100%;
   height: 100vh;
@@ -1678,6 +1838,12 @@ export default {
   height: 23px;
   // background: #f8f9fa;
   border-radius: 0px 0px 0px 0px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.frame-icon:hover {
+  opacity: 0.8;
 }
 
 .search-section {
@@ -1729,31 +1895,6 @@ export default {
   right: 0;
   bottom: 0;
   z-index: 1;
-
-  // 隐藏百度地图logo
-  :deep(.BMap_cpyCtrl) {
-    display: none !important;
-  }
-
-  :deep(.BMap_stdMpCtrl) {
-    display: none !important;
-  }
-
-  :deep(.anchorBL) {
-    display: none !important;
-  }
-
-  :deep(.BMap_scaleCtrl) {
-    display: none !important;
-  }
-
-  :deep(.BMap_cpyCtrl) {
-    display: none !important;
-  }
-
-  :deep(.BMap_stdMpCtrl) {
-    display: none !important;
-  }
 }
 
 .fixed-poi-button {
@@ -2074,13 +2215,14 @@ export default {
 
 /* 路径规划中间样式 */
 .route-middle {
-  width: 340px;
+  width: 100%;
   height: 109px;
   margin-top: 13px;
-  padding: 0 16px;
+  // padding: 0 16px;
 }
 
 .route-locations {
+  width: 100%;
   background: #FFFFFF;
   border: 1px dashed #E0E0E0;
   border-radius: 8px;
@@ -2179,5 +2321,18 @@ export default {
   height: 4px;
   background: #999999;
 }
+
+/* 审图号信息样式 */
+.map-license-info {
+  position: fixed;
+  left: 10px;
+  bottom: 10px;
+  font-size: 10px;
+  color: #999999;
+  font-family: "微软雅黑", sans-serif;
+  z-index: 1000;
+}
+
+
 </style>
 

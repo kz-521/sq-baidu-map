@@ -2,10 +2,10 @@
   <div class="mobile-container">
     <!--
       热力图页面说明：
-      - 热力图只在页面初始化时渲染一次
-      - 移动或缩放地图时不会重新渲染
-      - 定位按钮不会触发热力图重新渲染
-      - 所有热力数据基于初始位置计算
+      - 热力图只在页面初始化时渲染一次，性能优化
+      - 移动或缩放地图时不会重新渲染，避免重复计算
+      - 定位按钮不会触发热力图重新渲染，保持数据一致性
+      - 所有热力数据基于初始位置计算，确保准确性
     -->
 
     <!-- 头部：返回 + 标题 -->
@@ -73,14 +73,13 @@ const MAP_CONFIG = {
 }
 
 const HEATMAP_CONFIG = {
-  KEYWORDS: ['商圈', '购物中心', '商业广场', '商业街','国际广场','中心'],
+  KEYWORDS: ['商圈', '购物中心', '商业广场', '商业街','国际广场'],
   WEIGHTS: {
     '商圈': 1.3,
     '购物中心': 1.2,
     '商业广场': 1.1,
     '商业街': 1.0,
     '国际广场': 0.9,
-    '中心': 0.9,
   },
   COLORS: {
     PRIMARY: '255,69,58',
@@ -111,7 +110,11 @@ export default {
       lastLocation: null,
       userHeading: 0, // 用户朝向角度（0-360度）
       locationHistory: [], // 位置历史，用于计算方向
-      maxHistoryLength: 5 // 最大历史记录数
+      maxHistoryLength: 5, // 最大历史记录数
+      // 防抖相关
+      isLocating: false, // 防止重复定位
+      // 首次热力图初始化标记，防止移动触发重复初始化
+      hasInitializedHeatmap: false
     }
   },
   async mounted() {
@@ -176,11 +179,15 @@ export default {
 
     // 设置地图事件监听器
     setupMapEventListeners() {
-      this.map.addEventListener('tilesloaded', () => {
-        console.log('Map tiles loaded')
+      const onTilesLoaded = () => {
+        if (this.hasInitializedHeatmap) return
+        this.hasInitializedHeatmap = true
+        this.map.removeEventListener('tilesloaded', onTilesLoaded)
+        console.log('Map tiles loaded (first time)')
         this.mapLoaded = true
         this.initializeHeatmap()
-      })
+      }
+      this.map.addEventListener('tilesloaded', onTilesLoaded)
     },
 
     // 初始化热力图
@@ -197,6 +204,14 @@ export default {
     // 安卓返回
     handleBack() {
       try {
+        // 优先调用安卓广告注入方法
+        if (window.Android && typeof window.Android.showFullAdFromWeb === 'function') {
+          window.Android.showFullAdFromWeb()
+        } else if (typeof window.showFullAdFromWeb === 'function') {
+          window.showFullAdFromWeb()
+        }
+      } catch (e) { /* ignore */ }
+      try {
         if (window.Android) {
           if (window.Android.onBackPressed) { window.Android.onBackPressed(); return }
           if (window.Android.goBack) { window.Android.goBack(); return }
@@ -208,15 +223,26 @@ export default {
 
     // 定位到当前位置：仅回到当前位置，不加图标
     locateToCurrent() {
+      if (this.isLocating) return // 防抖处理
+
+      this.isLocating = true
+
       if (!navigator.geolocation) {
         this.handleLocationFallback()
+        this.isLocating = false
         return
       }
 
       this.checkLocationPermission()
       navigator.geolocation.getCurrentPosition(
-        (pos) => this.handleLocationSuccess(pos),
-        () => this.handleLocationError()
+        (pos) => {
+          this.handleLocationSuccess(pos)
+          this.isLocating = false
+        },
+        () => {
+          this.handleLocationError()
+          this.isLocating = false
+        }
       )
     },
 
@@ -327,17 +353,17 @@ export default {
       const zoom = this.map.getZoom()
       console.log('渲染热力图，中心点:', center.lng, center.lat, '缩放级别:', zoom)
 
-      if (this.heatPOIs && this.heatPOIs.length) {
+      // 使用真实POI数据优先，否则使用模拟数据
+      if (this.heatPOIs && this.heatPOIs.length > 0) {
         console.log('使用真实POI数据渲染热力图，POI数量:', this.heatPOIs.length)
         this.renderHeatFromPOIs(center, zoom)
       } else {
         console.log('使用模拟商圈数据渲染热力图')
         const centers = this.generateBusinessCenters(center, zoom)
-        centers.forEach((c) => this.drawBusinessCluster(c, zoom))
+        centers.forEach((center) => this.drawBusinessCluster(center, zoom))
       }
 
       console.log('热力图一次性渲染完成，覆盖物数量:', this.heatOverlays.length)
-      console.log('注意：移动或缩放地图时不会重新渲染热力图')
     },
 
     // 真实POI商圈：一次性搜索，移动时不重新搜索
@@ -352,26 +378,26 @@ export default {
         const merged = new Map()
 
         results.forEach(result => {
-          if (result.status === 'fulfilled') {
+          if (result.status === 'fulfilled' && result.value) {
             result.value.forEach(poi => {
-              const key = `${poi.name}|${poi.lng.toFixed(4)}|${poi.lat.toFixed(4)}`
-              const existing = merged.get(key)
-              if (!existing || existing.weight < poi.weight) {
-                merged.set(key, poi)
+              if (poi && poi.name && poi.lng && poi.lat) {
+                const key = `${poi.name}|${poi.lng.toFixed(4)}|${poi.lat.toFixed(4)}`
+                const existing = merged.get(key)
+                if (!existing || existing.weight < poi.weight) {
+                  merged.set(key, poi)
+                }
               }
             })
           }
         })
 
         // 限制数量，按距离就近排序
-        const centerPoint = center
         const sortedPOIs = Array.from(merged.values())
-          .sort((a, b) => this.distanceMeters(centerPoint, a) - this.distanceMeters(centerPoint, b))
+          .sort((a, b) => this.distanceMeters(center, a) - this.distanceMeters(center, b))
           .slice(0, MAP_CONFIG.MAX_POI_COUNT)
 
         this.heatPOIs = sortedPOIs
         console.log('POI一次性搜索完成，获取到', sortedPOIs.length, '个有效POI')
-        console.log('注意：移动地图时不会重新搜索POI')
       })
     },
 
@@ -388,7 +414,7 @@ export default {
                 const num = result.getCurrentNumPois()
                 for (let i = 0; i < num; i++) {
                   const poi = result.getPoi(i)
-                  if (!poi || !poi.point) continue
+                  if (!poi || !poi.point || !poi.point.lng || !poi.point.lat) continue
 
                   const weight = baseWeight * (poi.numReviews ? Math.min(1 + poi.numReviews / 1000, 2) : 1)
                   pois.push({
@@ -416,12 +442,14 @@ export default {
 
     // 用POI集合绘制热力
     renderHeatFromPOIs(center, zoom) {
-      if (!this.mapLoaded) return // 确保地图加载完成
+      if (!this.mapLoaded || !this.heatPOIs || this.heatPOIs.length === 0) return
 
       const baseRadius = this.getBaseRadiusByZoom(zoom)
       const topPOIs = this.heatPOIs.slice(0, MAP_CONFIG.MAX_POI_COUNT)
 
       topPOIs.forEach(poi => {
+        if (!poi || !poi.lng || !poi.lat) return
+
         const weight = Math.max(0.6, Math.min(1.6, poi.weight || 1))
         const radius1 = baseRadius * weight
         const radius2 = radius1 * 0.45
@@ -487,7 +515,7 @@ export default {
 
     // 绘制单个商圈簇：同心圆梯度 + 周边散点增强（恢复层透明度）
     drawBusinessCluster(centerPoint, zoom) {
-      if (!this.mapLoaded) return // 确保地图加载完成
+      if (!this.mapLoaded || !centerPoint) return
 
       const coreRadius = this.getCoreRadiusByZoom(zoom)
       const layers = [
@@ -509,6 +537,8 @@ export default {
 
     // 添加散点增强（恢复更大散点与透明度范围）
     addScatterPoints(centerPoint, zoom) {
+      if (!centerPoint) return
+
       const scatterCount = this.getScatterCountByZoom(zoom)
 
       for (let i = 0; i < scatterCount; i++) {
@@ -549,9 +579,11 @@ export default {
 
     // 清理热力覆盖物
     clearHeatOverlays() {
+      if (!this.map || !this.heatOverlays.length) return
+
       try {
         this.heatOverlays.forEach(overlay => {
-          if (this.map && overlay) {
+          if (overlay && typeof overlay.remove === 'function') {
             this.map.removeOverlay(overlay)
           }
         })
@@ -561,11 +593,13 @@ export default {
       this.heatOverlays = []
     },
 
-    // 距离计算（米）
+    // 距离计算（米）- 使用Haversine公式
     distanceMeters(a, b) {
       try {
+        if (!a || !b) return 0
+
         const lngLatToRad = (d) => d * Math.PI / 180
-        const R = 6371000
+        const R = 6371000 // 地球半径（米）
 
         const lat1 = lngLatToRad(a.lat || a.getLat())
         const lat2 = lngLatToRad(b.lat || b.getLat())
@@ -613,7 +647,7 @@ export default {
 
     // 计算并更新用户移动方向
     updateUserHeading(newPoint) {
-      if (!newPoint) return
+      if (!newPoint || !newPoint.lng || !newPoint.lat) return
 
       // 添加新位置到历史记录
       this.locationHistory.push({
@@ -709,7 +743,6 @@ export default {
   right: 0;
   bottom: 0;
   z-index: 10;
-  :deep(.BMap_cpyCtrl), :deep(.BMap_stdMpCtrl), :deep(.BMap_scaleCtrl), :deep(.anchorBL) { display: none !important; }
 }
 
 /* 定位按钮：右18px，下107px */
@@ -728,7 +761,7 @@ export default {
   padding: 8px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
 .fixed-legend .legend-label { font-size: 12px; color: #333; }
-.legend-bar { width: 24px; height: 84px; border: 1px dashed #E0E0E0; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+.legend-bar { width: 24px; height: 84px; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
 .legend-seg { flex: 1; }
 .legend-seg.seg-1 { background: #FF4D4F; }
 .legend-seg.seg-2 { background: #FF7A7C; }
