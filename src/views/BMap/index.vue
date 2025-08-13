@@ -86,9 +86,7 @@
     <div id="map-container" class="map-container" />
 
     <!-- 审图号信息 -->
-    <div class="map-license-info">
-      审图号：GS(2025)551号|GS（2025）2175号
-    </div>
+    <div class="map-license-info">审图号 GS(2022)460号 北京百度网讯科技有限公司</div>
 
     <!-- 位置信息卡片 -->
     <div v-if="showLocationCard" class="location-card">
