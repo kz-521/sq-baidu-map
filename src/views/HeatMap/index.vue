@@ -1,22 +1,5 @@
 <template>
   <div class="mobile-container">
-    <!--
-      热力图页面说明：
-      - 热力图只在页面初始化时渲染一次，性能优化
-      - 移动或缩放地图时不会重新渲染，避免重复计算
-      - 定位按钮不会触发热力图重新渲染，保持数据一致性
-      - 所有热力数据基于初始位置计算，确保准确性
-    -->
-
-    <!-- 头部：返回 + 标题 -->
-    <div class="header">
-      <div class="search-header-content">
-        <div class="left-icon" @click="handleBack">
-          <img src="@/assets/back.png" alt="返回" class="frame-icon">
-        </div>
-        <div class="search-adr">热力图</div>
-      </div>
-    </div>
 
     <!-- 地图容器 -->
     <div id="heatmap-container" class="map-container" />
@@ -37,6 +20,9 @@
       <img src="@/assets/position.png" alt="定位" class="loc-icon">
     </div>
 
+    <!-- 审图号信息 -->
+    <MapLicenseInfo />
+
     <!-- 定位提示条 -->
     <div v-if="showLocationTip" class="location-tip-bar">
       <div class="tip-content">
@@ -49,23 +35,14 @@
 </template>
 
 <script>
-/**
- * 热力图组件 - 一次性渲染系统
- *
- * 特性：
- * 1. 热力图只在页面初始化时渲染一次
- * 2. 移动或缩放地图时不会重新渲染
- * 3. 定位按钮不会触发热力图重新渲染
- * 4. 所有热力数据基于初始位置计算
- * 5. 性能优化：避免重复的POI搜索和渲染
- */
 
 import loadBMap from '@/utils/loadBMap'
 import userIconImg from '@/assets/user.png'
+import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 
 // 常量配置
 const MAP_CONFIG = {
-  DEFAULT_CENTER: { lng: 120.019, lat: 30.274 },
+  DEFAULT_CENTER: { lng: 116.391, lat: 39.906217 },
   DEFAULT_ZOOM: 15,
   LOCATION_ZOOM: 16,
   SEARCH_RADIUS: 5000,
@@ -96,6 +73,7 @@ const MAP_STYLE = [
 
 export default {
   name: 'HeatMap',
+  components: { MapLicenseInfo },
   data() {
     return {
       map: null,
@@ -129,7 +107,7 @@ export default {
     } catch (e) {
       console.error('热力图初始化失败:', e)
       console.error('错误详情:', e.message, e.stack)
-      this.$toast && this.$toast.fail('热力图加载失败: ' + e.message)
+      this.$message && this.$message.error('热力图加载失败: ' + e.message)
     }
   },
   methods: {
@@ -192,58 +170,51 @@ export default {
 
     // 初始化热力图
     initializeHeatmap() {
+      // 尝试主动定位（不阻塞后续渲染流程）
+      try { this.locateToCurrent() } catch (e) {}
+
       this.getCurrentLocationSilently(() => {
         console.log('Location obtained, map ready')
         const center = this.locationPoint || this.map.getCenter()
+
+        // 先启动首屏“流式渲染”，更快看到点位
+        try { this.startStreamingPOIs(center, MAP_CONFIG.SEARCH_RADIUS) } catch (e) {}
+
+        // 再做完整搜索并最终渲染
         this.fetchBusinessPOIs(center, MAP_CONFIG.SEARCH_RADIUS)
           .then(() => this.renderHeatmap())
           .catch(() => this.renderHeatmap())
       })
     },
-
-    // 安卓返回
-    handleBack() {
-      try {
-        // 优先调用安卓广告注入方法
-        if (window.Android && typeof window.Android.showFullAdFromWeb === 'function') {
-          window.Android.showFullAdFromWeb()
-        } else if (typeof window.showFullAdFromWeb === 'function') {
-          window.showFullAdFromWeb()
-        }
-      } catch (e) { /* ignore */ }
-      try {
-        if (window.Android) {
-          if (window.Android.onBackPressed) { window.Android.onBackPressed(); return }
-          if (window.Android.goBack) { window.Android.goBack(); return }
-          if (window.Android.back) { window.Android.back(); return }
-        }
-      } catch (e) { /* ignore */ }
-      window.history.back()
-    },
-
     // 定位到当前位置：仅回到当前位置，不加图标
     locateToCurrent() {
       if (this.isLocating) return // 防抖处理
 
       this.isLocating = true
 
-      if (!navigator.geolocation) {
+      if (!this.map) {
         this.handleLocationFallback()
         this.isLocating = false
         return
       }
 
-      this.checkLocationPermission()
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          this.handleLocationSuccess(pos)
-          this.isLocating = false
-        },
-        () => {
-          this.handleLocationError()
-          this.isLocating = false
+      const geolocation = new window.BMap.Geolocation()
+      const vm = this
+      geolocation.getCurrentPosition(function(r){
+        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+          vm.map.panTo(r.point)
+          // alert('您的位置：' + r.point.lng + ',' + r.point.lat)
+
+          vm.locationPoint = r.point
+          vm.updateCurrentMarker(r.point)
+          vm.showLocationTip = false
+        } else {
+          // alert('failed' + (this.getStatus ? this.getStatus() : ''))
+          vm.handleLocationFallback()
+          vm.showLocationTip = true
         }
-      )
+        vm.isLocating = false
+      })
     },
 
     // 处理定位成功
@@ -271,15 +242,20 @@ export default {
 
     // 静默定位后回调
     getCurrentLocationSilently(cb) {
-      if (!navigator.geolocation) {
-        this.handleSilentLocationFallback(cb)
-        return
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => this.handleSilentLocationSuccess(pos, cb),
-        () => this.handleSilentLocationError(cb)
-      )
+      const geolocation = new window.BMap.Geolocation()
+      const vm = this
+      geolocation.getCurrentPosition(function(r){
+        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+          vm.locationPoint = r.point
+          if (!vm.mapLoaded) {
+            vm.map.centerAndZoom(r.point, MAP_CONFIG.LOCATION_ZOOM)
+          }
+          vm.updateCurrentMarker(r.point)
+          if (cb) cb()
+        } else {
+          vm.handleSilentLocationFallback(cb)
+        }
+      })
     },
 
     // 静默定位成功处理
@@ -325,12 +301,25 @@ export default {
 
     enableLocation() {
       if (this.locationPermission === 'denied') {
-        this.$toast && this.$toast('请在浏览器/应用中开启定位权限')
-        if (window.Android && window.Android.openLocationSettings) {
-          try { window.Android.openLocationSettings() } catch (e) {}
-        }
+        this.$message && this.$message.info('请在浏览器/应用中开启定位权限')
+        this.callAndroidMethod('openLocationSettings')
       } else {
         this.locateToCurrent()
+      }
+    },
+
+    // 统一封装 Android 注入对象调用
+    callAndroidMethod(methodName, ...args) {
+      try {
+        const android = window && window.AndroidInterface
+        if (android && typeof android[methodName] === 'function') {
+          android[methodName](...args)
+          return true
+        }
+        return false
+      } catch (e) {
+        console.log('调用 Android 接口失败:', methodName, e)
+        return false
       }
     },
 
@@ -364,6 +353,26 @@ export default {
       }
 
       console.log('热力图一次性渲染完成，覆盖物数量:', this.heatOverlays.length)
+    },
+
+    // 快速首屏流式渲染：少量并发检索 + 立即分批绘制
+    startStreamingPOIs(center, radius) {
+      const quickKeywords = HEATMAP_CONFIG.KEYWORDS.slice(0, 2) // 取前2个关键词
+      const tasks = quickKeywords.map(k => this.searchNearbyPromise(k, center, radius, HEATMAP_CONFIG.WEIGHTS[k] || 1))
+
+      Promise.allSettled(tasks).then(results => {
+        const quick = []
+        results.forEach(r => {
+          if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+            quick.push(...r.value)
+          }
+        })
+
+        // 只取前 12 个做首屏渲染
+        const quickTop = quick.slice(0, 20)
+        this.heatPOIs = quickTop // 临时渲染数据
+        this.renderHeatmap()
+      }).catch(() => {})
     },
 
     // 真实POI商圈：一次性搜索，移动时不重新搜索
@@ -445,29 +454,39 @@ export default {
       if (!this.mapLoaded || !this.heatPOIs || this.heatPOIs.length === 0) return
 
       const baseRadius = this.getBaseRadiusByZoom(zoom)
-      const topPOIs = this.heatPOIs.slice(0, MAP_CONFIG.MAX_POI_COUNT)
+      const limit = Math.min(MAP_CONFIG.MAX_POI_COUNT, this.heatPOIs.length)
 
-      topPOIs.forEach(poi => {
-        if (!poi || !poi.lng || !poi.lat) return
+      const processBatch = (startIndex) => {
+        const batchSize = 10
+        const end = Math.min(startIndex + batchSize, limit)
 
-        const weight = Math.max(0.6, Math.min(1.6, poi.weight || 1))
-        const radius1 = baseRadius * weight
-        const radius2 = radius1 * 0.45
+        for (let i = startIndex; i < end; i++) {
+          const poi = this.heatPOIs[i]
+          if (!poi || !poi.lng || !poi.lat) continue
 
-        // 恢复较大的透明度
-        const opacity1 = 0.22 + (weight - 1) * 0.08
-        const opacity2 = 0.28 + (weight - 1) * 0.1
+          const weight = Math.max(0.6, Math.min(1.6, poi.weight || 1))
+          const radius1 = baseRadius * weight
+          const radius2 = radius1 * 0.45
 
-        const point = new window.BMap.Point(poi.lng, poi.lat)
+          const opacity1 = 0.22 + (weight - 1) * 0.08
+          const opacity2 = 0.28 + (weight - 1) * 0.1
 
-        // 创建两个同心圆
-        const circle1 = this.createHeatCircle(point, radius1, HEATMAP_CONFIG.COLORS.SECONDARY, opacity1)
-        const circle2 = this.createHeatCircle(point, radius2, HEATMAP_CONFIG.COLORS.PRIMARY, opacity2)
+          const point = new window.BMap.Point(poi.lng, poi.lat)
 
-        this.map.addOverlay(circle1)
-        this.map.addOverlay(circle2)
-        this.heatOverlays.push(circle1, circle2)
-      })
+          const circle1 = this.createHeatCircle(point, radius1, HEATMAP_CONFIG.COLORS.SECONDARY, opacity1)
+          const circle2 = this.createHeatCircle(point, radius2, HEATMAP_CONFIG.COLORS.PRIMARY, opacity2)
+
+          this.map.addOverlay(circle1)
+          this.map.addOverlay(circle2)
+          this.heatOverlays.push(circle1, circle2)
+        }
+
+        if (end < limit) {
+          setTimeout(() => processBatch(end), 0)
+        }
+      }
+
+      processBatch(0)
     },
 
     // 根据缩放级别获取基础半径（恢复较大尺寸）

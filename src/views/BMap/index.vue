@@ -23,12 +23,12 @@
         <div class="route-locations">
           <div class="location-item start-location">
             <div class="location-dot start-dot"></div>
-            <div class="location-text">{{ startLocationText }}</div>
+            <div class="location-text" style="width:86%">{{ startLocationText }}</div>
           </div>
           <div class="location-divider"></div>
           <div class="location-item end-location">
             <div class="location-dot end-dot"></div>
-            <div class="location-text">{{ endLocationText }}</div>
+            <div class="location-text" style="width:86%">{{ endLocationText }}{{ endLocationText }}</div>
           </div>
           <div class="swap-button" @click="swapLocations">
             <div class="swap-icon">
@@ -60,33 +60,11 @@
       <div class="search-adr"></div>
     </div>
 
-    <!-- 路径规划中间 -->
-    <div v-if="isRoutePlanning" class="route-middle">
-      <div class="route-locations">
-        <div class="location-item start-location">
-          <div class="location-dot start-dot"></div>
-          <div class="location-text">{{ startLocationText }}</div>
-        </div>
-        <div class="location-divider"></div>
-        <div class="location-item end-location">
-          <div class="location-dot end-dot"></div>
-          <div class="location-text">{{ endLocationText }}</div>
-        </div>
-        <div class="swap-button" @click="swapLocations">
-          <div class="swap-icon">
-            <div class="swap-arrow up"></div>
-            <div class="swap-line"></div>
-            <div class="swap-arrow down"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 地图容器 -->
     <div id="map-container" class="map-container" />
 
     <!-- 审图号信息 -->
-    <div class="map-license-info">审图号 GS(2022)460号 北京百度网讯科技有限公司</div>
+    <MapLicenseInfo />
 
     <!-- 位置信息卡片 -->
     <div v-if="showLocationCard" class="location-card">
@@ -145,9 +123,14 @@
 <script>
 import loadBMap from '@/utils/loadBMap'
 import shopIcon from '@/assets/shop.png'
+import userIcon from '@/assets/user.png'
+import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 
 export default {
   name: 'BMap',
+  components: {
+    MapLicenseInfo
+  },
   data() {
     return {
       isGoing: false,
@@ -167,7 +150,9 @@ export default {
       startPoint: null,
       endPoint: null,
       // 站点标记集合：用于搜索前清理
-      stationMarkers: []
+      stationMarkers: [],
+      // 当前用户定位标记
+      currentUserMarker: null
     }
   },
   computed: {
@@ -222,8 +207,6 @@ export default {
         this.initMap()
         // 检查定位权限
         this.checkLocationPermission()
-        // 页面加载完成后调用安卓的注入方法
-        this.callAndroidShowFullAd()
       }, 1000)
     } catch (error) {
       console.error('地图初始化失败:', error)
@@ -359,9 +342,13 @@ export default {
     },
     // 调用手机原生导航（显示导航类型选择弹窗）
     startNativeNavigation() {
+      // 仅调用安卓注入方法打开地图应用，不做其他逻辑
       try {
-        // 显示导航类型选择弹窗
-        this.showNavigationTypeModal()
+        if (window.AndroidInterface && typeof window.AndroidInterface.openMapApp === 'function') {
+          window.AndroidInterface.openMapApp()
+        } else {
+          this.$toast && this.$toast('openMapApp 不可用')
+        }
       } catch (e) {
         console.error('启动导航失败:', e)
         this.$toast && this.$toast.fail('启动导航失败')
@@ -847,7 +834,7 @@ export default {
         })
 
         // 设置地图中心点（默认杭州市余杭区EFC中心）
-        const point = new window.BMap.Point(120.019, 30.274)
+        const point = new window.BMap.Point(116.391, 39.906217)
         this.map.centerAndZoom(point, 18)
 
         // 应用地图样式
@@ -959,6 +946,8 @@ export default {
       }
     },
     locateToCurrent() {
+      // 点击定位时调用安卓注入方法
+      try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
       if (!navigator.geolocation) {
         this.$toast && this.$toast.fail('浏览器不支持定位，使用默认位置')
         const defaultPoint = new window.BMap.Point(120.019, 30.274)
@@ -979,6 +968,9 @@ export default {
           this.locationPoint = point
           this.startPoint = point
 
+          // 使用 user.png 显示当前定位标记
+          this.createOrUpdateUserMarker(point)
+
           // 定位成功，隐藏提示条
           this.showLocationTip = false
         },
@@ -989,6 +981,9 @@ export default {
           this.map.panTo(defaultPoint)
           this.locationPoint = defaultPoint
           this.startPoint = defaultPoint
+
+          // 使用 user.png 显示默认定位标记
+          this.createOrUpdateUserMarker(defaultPoint)
 
           // 根据错误类型显示提示
           if (error.code === 1) {
@@ -1069,9 +1064,9 @@ export default {
         this.$toast && this.$toast('请在浏览器设置中开启定位权限')
 
         // 在安卓内嵌环境下，尝试调用原生方法
-        if (window.Android && window.Android.openLocationSettings) {
+        if (window.AndroidInterface && window.AndroidInterface.openLocationSettings) {
           try {
-            window.Android.openLocationSettings()
+            window.AndroidInterface.openLocationSettings()
           } catch (e) {
             console.log('调用原生方法失败')
           }
@@ -1167,8 +1162,8 @@ export default {
             this.locationPoint = point
             this.map.centerAndZoom(point, 16)
 
-            // 添加当前位置标记
-            this.createShopMarker(point)
+            // 添加当前位置标记（用户定位使用 user.png）
+            this.createOrUpdateUserMarker(point)
           },
           (error) => {
             console.error('获取位置失败:', error)
@@ -1179,9 +1174,8 @@ export default {
             // 在地图上标记默认位置
             this.map.centerAndZoom(defaultPoint, 16)
 
-            // 添加默认位置标记
-            const marker = new window.BMap.Marker(defaultPoint)
-            this.map.addOverlay(marker)
+            // 添加默认位置标记（用户定位使用 user.png）
+            this.createOrUpdateUserMarker(defaultPoint)
           }
         )
       } else {
@@ -1192,9 +1186,8 @@ export default {
         // 在地图上标记默认位置
         this.map.centerAndZoom(defaultPoint, 16)
 
-        // 添加默认位置标记
-        const marker = new window.BMap.Marker(defaultPoint)
-        this.map.addOverlay(marker)
+        // 添加默认位置标记（用户定位使用 user.png）
+        this.createOrUpdateUserMarker(defaultPoint)
       }
     },
 
@@ -1209,8 +1202,8 @@ export default {
             this.locationPoint = point
             this.map.centerAndZoom(point, 16)
 
-            // 添加当前位置标记
-            this.createShopMarker(point)
+            // 添加当前位置标记（用户定位使用 user.png）
+            this.createOrUpdateUserMarker(point)
 
             // 获取地址信息
             this.getAddressFromPoint(point)
@@ -1224,8 +1217,8 @@ export default {
             // 在地图上标记默认位置
             this.map.centerAndZoom(defaultPoint, 16)
 
-            // 添加默认位置标记
-            this.createShopMarker(defaultPoint)
+            // 添加默认位置标记（用户定位使用 user.png）
+            this.createOrUpdateUserMarker(defaultPoint)
 
             // 获取默认位置地址信息
             this.getAddressFromPoint(defaultPoint)
@@ -1238,8 +1231,8 @@ export default {
 
         // 在地图上标记默认位置
         this.map.centerAndZoom(defaultPoint, 16)
-        // 添加默认位置标记
-        this.createShopMarker(defaultPoint)
+        // 添加默认位置标记（用户定位使用 user.png）
+        this.createOrUpdateUserMarker(defaultPoint)
         // 获取默认位置地址信息
         this.getAddressFromPoint(defaultPoint)
       }
@@ -1290,6 +1283,7 @@ export default {
 
       // 使用通用方法
       this.createAndRunRidingRoute(this.startPoint, this.endPoint)
+      try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
           },
                     (error) => {
             console.error('获取当前位置失败:', error)
@@ -1307,6 +1301,7 @@ export default {
 
       // 使用通用方法
       this.createAndRunRidingRoute(startPoint, endPoint)
+      try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
           }
         )
       } else {
@@ -1324,6 +1319,7 @@ export default {
 
       // 使用通用方法
       this.createAndRunRidingRoute(startPoint, endPoint)
+      try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
       }
     },
 
@@ -1393,7 +1389,7 @@ export default {
                     if (p && p.point && p.title) pois.push(p)
                   }
                 }
-                // 先找标题包含“骑士驿站”等的POI；若无，再用标题最接近搜索词的POI
+                // 先找标题包含"骑士驿站"等的POI；若无，再用标题最接近搜索词的POI
                 let candidate = pois.find(p => stationReg.test(p.title))
                 if (!candidate && kw) {
                   candidate = pois
@@ -1468,6 +1464,29 @@ export default {
       }
     },
 
+    // 使用 user.png 创建或更新“我的位置”标记（保持 168:209 显示比例）
+    createOrUpdateUserMarker(point) {
+      if (!this.map || !point) return
+      try {
+        // 移除已有的用户定位标记
+        if (this.currentUserMarker) {
+          try { this.map.removeOverlay(this.currentUserMarker) } catch (e) {}
+          this.currentUserMarker = null
+        }
+        // 以固定宽度按比例计算高度（比例 168:209）
+        const baseWidth = 28
+        const baseHeight = Math.round(baseWidth * 209 / 168)
+        const size = new window.BMap.Size(baseWidth, baseHeight)
+        const icon = new window.BMap.Icon(userIcon, size, { imageSize: size })
+        const marker = new window.BMap.Marker(point, { icon })
+        this.map.addOverlay(marker)
+        this.currentUserMarker = marker
+        return marker
+      } catch (e) {
+        console.error('创建用户定位标记失败:', e)
+      }
+    },
+
     // 搜索附近骑士驿站并添加标记
     searchNearbyStations() {
       // 点击附近骑士驿站时调用安卓的注入方法
@@ -1484,7 +1503,7 @@ export default {
       }
 
       const radius = 10000 // 10km 半径
-      // 按需求：点击“附近骑士驿站”仅展示“骑士驿站”的搜索结果
+      // 按需求：点击"附近骑士驿站"仅展示"骑士驿站"的搜索结果
       const keywords = ['骑士驿站']
       const useStrictFilter = true
       const excludeKeywords = ['菜鸟', '快递', '丰巢', '邮政', '代收', '自提'].map(k => k.toLowerCase())
@@ -1512,7 +1531,7 @@ export default {
                 for (let i = 0; i < num; i++) {
                   const poi = result.getPoi(i)
                   if (!poi || !poi.point || !poi.point.lng || !poi.point.lat) continue
-                  // 严格过滤：仅保留“标题包含关键字”的POI
+                  // 严格过滤：仅保留"标题包含关键字"的POI
                   if (!matchesKeywords(poi)) continue
                   pois.push(poi)
                 }
@@ -1568,7 +1587,7 @@ export default {
           if (marker) this.stationMarkers.push(marker)
         })
 
-        this.$toast && this.$toast(`已加载“骑士驿站”在附近的${limited.length}个结果`)
+        this.$toast && this.$toast(`已加载"骑士驿站"在附近的${limited.length}个结果`)
       }).catch(() => {
         this.$toast && this.$toast.fail('附近骑士驿站搜索失败')
       })
@@ -1732,16 +1751,18 @@ export default {
     callAndroidShowFullAd() {
       try {
         // 检查是否在安卓WebView环境中
-        if (window.Android && typeof window.Android.showFullAdFromWeb === 'function') {
+        if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') {
           console.log('调用安卓注入方法: showFullAdFromWeb')
-          window.Android.showFullAdFromWeb()
+          window.AndroidInterface.showFullAdFromWeb()
         } else if (window.showFullAdFromWeb && typeof window.showFullAdFromWeb === 'function') {
           console.log('调用全局方法: showFullAdFromWeb')
           window.showFullAdFromWeb()
         } else {
+          alert('安卓注入方法 showFullAdFromWeb 不可用:')
           console.log('安卓注入方法 showFullAdFromWeb 不可用')
         }
       } catch (error) {
+        alert('调用安卓注入方法失败:' + error)
         console.error('调用安卓注入方法失败:', error)
       }
     }
@@ -1944,23 +1965,6 @@ export default {
   z-index: 1000;
 }
 
-
-
-.location-text {
-  font-size: 14px;
-  color: #333;
-  line-height: 1.4;
-  // width: 199px;
-  height: 14px;
-  font-family: PingFang SC, PingFang SC;
-  font-weight: 400;
-  font-size: 12px;
-  color: #777777;
-  line-height: 14px;
-  text-align: left;
-  font-style: normal;
-  text-transform: none;
-}
 
 .action-btn {
   min-width: 50px;
@@ -2237,16 +2241,22 @@ export default {
 }
 
 .location-text {
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* 最多两行 */
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+  white-space: normal;
   font-family: PingFang SC, PingFang SC;
   font-weight: 500;
   font-size: 14px;
   color: #333333;
-  line-height: 24px; /* 与容器高度一致，确保垂直居中 */
-  display: flex;
-  align-items: center;
-  flex: 1;
+  line-height: 20px; /* 紧凑但易读 */
+  text-align: left;
 }
-
 .location-divider {
   height: 1px;
   background: #F0F0F0;
@@ -2302,16 +2312,7 @@ export default {
   background: #999999;
 }
 
-/* 审图号信息样式 */
-.map-license-info {
-  position: fixed;
-  left: 10px;
-  bottom: 10px;
-  font-size: 10px;
-  color: #999999;
-  font-family: "微软雅黑", sans-serif;
-  z-index: 1000;
-}
+
 
 
 </style>

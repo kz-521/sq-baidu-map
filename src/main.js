@@ -2,25 +2,23 @@ import Vue from 'vue'
 
 import 'normalize.css/normalize.css' // A modern alternative to CSS resets
 
-import { Icon } from 'element-ui'
-// 按需引入 Vant 组件（示例）
-// 需要哪个再按需补充引入
-import { Button as VanButton, Toast } from 'vant'
-import 'vant/lib/toast/style'
+// 移除未使用的 Element UI 组件注册，仅保留图标样式
+// import { Icon } from 'element-ui'
 import 'element-ui/lib/theme-chalk/icon.css'
-// 移除 element message 样式引入
+
+// 按需仅保留 Vant Toast
+import { Toast } from 'vant'
+import 'vant/lib/toast/style'
 
 import '@/styles/index.scss' // global css
 
 import App from './App'
 import router from './router'
 
-Vue.use(Icon)
-Vue.use(VanButton)
-Vue.use(Toast)
-
 // 全局挂载 Vant Toast
 Vue.prototype.$toast = Toast
+
+// 移除 vConsole 初始化
 
 Vue.config.productionTip = false
 

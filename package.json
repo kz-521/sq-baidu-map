@@ -16,11 +16,9 @@
     "svgo": "svgo -f src/icons/svg --config=src/icons/svgo.yml"
   },
   "dependencies": {
-    "axios": "0.18.1",
     "element-ui": "^2.13.0",
-    "vant": "^2.13.2",
     "normalize.css": "7.0.0",
-    "path-to-regexp": "2.4.0",
+    "vant": "^2.13.2",
     "vue": "2.6.10",
     "vue-router": "3.0.6"
   },
