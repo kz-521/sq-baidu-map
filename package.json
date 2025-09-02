@@ -1,8 +1,8 @@
 {
   "name": "knight-assistant",
   "version": "4.2.1",
-  "description": "骑士助手 - A vue admin web with Element UI, To share some examples",
-  "author": "Marco-hui <Marco_1891@163.com>",
+  "description": "骑士助手",
+  "author": "",
   "license": "MIT",
   "scripts": {
     "dev": "vue-cli-service serve",
