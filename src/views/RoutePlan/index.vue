@@ -616,10 +616,6 @@ export default {
         this.map.enableDoubleClickZoom(false) // 禁用双击缩放
         this.map.enablePinchToZoom(false) // 禁用移动端双指缩放
 
-        // 检查缩放功能是否启用
-
-        // RoutePlan 精简：无需联想/输入框/预定位
-
         // 地图初始化完成后再读取URL并规划路径（确保map已就绪）
         this.parseDestinationFromUrl()
         this.startNavigation()
