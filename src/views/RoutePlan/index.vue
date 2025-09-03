@@ -166,48 +166,6 @@ export default {
       }
     },
 
-    // 设置指定颜色的路线样式并添加方向箭头
-    stylePolylineWithColor(polyline, color) {
-      try {
-        if (!polyline) return
-
-        // 只对当前polyline设置颜色，不操作其他覆盖物
-        if (polyline.setStrokeColor) {
-          polyline.setStrokeColor(color)
-        }
-        if (polyline.setStrokeWeight) {
-          polyline.setStrokeWeight(8)
-        }
-        if (polyline.setStrokeOpacity) {
-          polyline.setStrokeOpacity(1)
-        }
-
-        // 设置完颜色后刷新地图，确保样式生效
-        if (this.map) {
-          // 尝试多种方式刷新地图
-          try {
-            if (this.map.refresh) {
-              this.map.refresh()
-            }
-          } catch (e) {}
-
-          try {
-            if (this.map.redraw) {
-              this.map.redraw()
-            }
-          } catch (e) {}
-
-          // 强制重新渲染
-          try {
-            this.map.setMapStyleV2({
-              styleJson: this.map.getMapStyleV2().styleJson
-            })
-          } catch (e) {}
-        }
-      } catch (e) {
-        // 静默处理错误
-      }
-    },
         // 添加起点和终点标记
     addStartEndMarkers(startPoint, endPoint) {
       try {
@@ -632,7 +590,6 @@ export default {
         this.map.panTo(defaultPoint)
         this.locationPoint = defaultPoint
         this.startPoint = defaultPoint
-
         return
       }
 
@@ -655,8 +612,6 @@ export default {
           this.map.panTo(defaultPoint)
           this.locationPoint = defaultPoint
           this.startPoint = defaultPoint
-
-
 
           // 根据错误类型显示提示
           if (error.code === 1) {
