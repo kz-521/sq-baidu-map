@@ -19,7 +19,10 @@
 
 <script>
 import loadBMap from '@/utils/loadBMap'
-import shopIcon from '@/assets/shop.png'
+import startIcon from '@/assets/start.png'
+import endIcon from '@/assets/end.png'
+import pickIcon from '@/assets/pick.png'
+import tipIcon from '@/assets/tip.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 
 export default {
@@ -36,8 +39,9 @@ export default {
       locationPermission: 'prompt',
       startPoint: null,
       endPoint: null,
-
-      hasPlanned: false
+      pickPoint: null,
+      hasPlanned: false,
+      overlaysNum: 0,
     }
   },
   async mounted() {
@@ -77,28 +81,39 @@ export default {
       } catch (e) { /* ignore */ }
     },
 
+    // 从URL读取pick点经纬度
+    parsePickPointFromUrl() {
+      try {
+        if (!window.BMap) return
+        const q = this.$route && this.$route.query ? this.$route.query : {}
+        let pickLat = parseFloat(q.picklat)
+        let pickLng = parseFloat(q.picklng)
+        if (!Number.isFinite(pickLat) || !Number.isFinite(pickLng)) return
+        const looksSwapped = (pickLat >= 73 && pickLat <= 136) && (pickLng >= 3 && pickLng <= 54)
+        const outOfRange = (pickLat < -90 || pickLat > 90) || (pickLng < -180 || pickLng > 180)
+        if (looksSwapped || outOfRange) {
+          const t = pickLat; pickLat = pickLng; pickLng = t
+          this.$toast && this.$toast('检测到pick点经纬度顺序颠倒，已自动纠正')
+        }
+                        this.pickPoint = new window.BMap.Point(pickLng, pickLat)
+              } catch (e) {
+                // 静默处理错误
+              }
+    },
+
     // 根据URL中的终点经纬度，使用当前位置作为起点进行路径规划
     startNavigation() {
-      if (!this.map) {
-        this.$toast && this.$toast.fail('地图未初始化')
-        return
-      }
-
-      if (this.hasPlanned) {
-        return
-      }
-
-      // 终点优先使用URL解析的endPoint
+      if (this.hasPlanned) return
+      // 解析终点坐标
       if (!this.endPoint) {
         this.parseDestinationFromUrl()
-      }
-      if (!this.endPoint) {
         this.$toast && this.$toast('未提供目的地坐标')
         return
       }
 
-      // 清理旧覆盖物，避免叠加
-      try { this.map.clearOverlays() } catch (e) {}
+      // 解析pick点坐标
+      this.parsePickPointFromUrl()
+
       // 先将视野移动到终点以便用户有反馈
       try { this.map.centerAndZoom(this.endPoint, 16) } catch (e) {}
 
@@ -112,7 +127,7 @@ export default {
           this.createAndRunRidingRoute(this.startPoint, this.endPoint)
           this.hasPlanned = true
           this.$toast && this.$toast('已使用写死起点模拟路径规划')
-          try { console.log('[RoutePlan] used fallback start point', this.startPoint, '->', this.endPoint) } catch (e) {}
+                      try { } catch (e) {}
         }
       }, 1200)
 
@@ -128,7 +143,7 @@ export default {
             // 自适应视野
             try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
             this.hasPlanned = true
-            try { console.log('[RoutePlan] planned with geolocation start', this.startPoint, '->', this.endPoint) } catch (e) {}
+            try { } catch (e) {}
           },
           () => {
             try { clearTimeout(guardTimer) } catch (e) {}
@@ -137,7 +152,7 @@ export default {
             this.createAndRunRidingRoute(this.startPoint, this.endPoint)
             try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
             this.hasPlanned = true
-            try { console.log('[RoutePlan] geolocation failed, used fallback start', this.startPoint, '->', this.endPoint) } catch (e) {}
+            try { } catch (e) {}
           }
         )
       } else {
@@ -147,163 +162,344 @@ export default {
         this.createAndRunRidingRoute(this.startPoint, this.endPoint)
         try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
         this.hasPlanned = true
-        try { console.log('[RoutePlan] no geolocation, used fallback start', this.startPoint, '->', this.endPoint) } catch (e) {}
+                    try { } catch (e) {}
       }
     },
 
-    addDirectionalArrows(polyline) {
-      try {
-        if (!polyline || !this.map) return
-
-        // 获取线条的路径点
-        const path = polyline.getPath()
-        if (!path || path.length < 2) return
-
-        // 在路径上每隔一定距离添加箭头
-        const arrowSpacing = 600 // 每600米添加一个箭头，更密集
-        const totalDistance = this.map.getDistance(path[0], path[path.length - 1])
-        const numArrows = Math.max(1, Math.floor(totalDistance / arrowSpacing))
-
-        for (let i = 1; i <= numArrows; i++) {
-          const index = Math.floor((i / (numArrows + 1)) * (path.length - 1))
-          if (index < path.length - 1) {
-            const point1 = path[index]
-            const point2 = path[index + 1]
-
-            // 计算箭头位置（在线段中点，确保贴合线条）
-            const midPoint = new window.BMap.Point(
-              (point1.lng + point2.lng) / 2,
-              (point1.lat + point2.lat) / 2
-            )
-
-            // 计算从point1到point2的方向向量
-            const deltaLng = point2.lng - point1.lng
-            const deltaLat = point2.lat - point1.lat
-
-            // 计算垂直于路径方向的偏移量，让箭头更贴合线条
-            const pathLength = Math.sqrt(deltaLng * deltaLng + deltaLat * deltaLat)
-            if (pathLength > 0) {
-              // 计算单位向量
-              const unitLng = deltaLng / pathLength
-              const unitLat = deltaLat / pathLength
-
-              // 计算垂直偏移（向左偏移，因为箭头默认偏向右边）
-              const offsetDistance = 0.0006 // 增加向左偏移量，让箭头更贴合线条
-              const perpendicularLng = -unitLat * offsetDistance
-              const perpendicularLat = unitLng * offsetDistance
-
-              // 应用偏移
-              midPoint.lng += perpendicularLng
-              midPoint.lat += perpendicularLat
-            }
-
-            // 计算箭头角度 - 修正角度计算，确保箭头朝向正确
-
-            // 计算角度（弧度转角度）
-            let angle = Math.atan2(deltaLat, deltaLng) * 180 / Math.PI
-
-            // 标准化角度到0-360度范围
-            if (angle < 0) {
-              angle += 360
-            }
-
-            // BMap的箭头符号默认指向右侧(0度)，需要调整角度
-            // 由于BMap的坐标系和地理坐标系的差异，需要调整
-            angle = 90 - angle
-
-            // 创建白色箭头符号 - 调整尺寸和边框，让箭头更细更清晰
-            const arrowSymbol = new window.BMap.Symbol(window.BMap_Symbol_SHAPE_FORWARD_OPEN_ARROW, {
-              scale: 0.4, // 减小箭头尺寸，让箭头更细
-              strokeColor: '#FFFFFF', // 白色边框
-              strokeWeight: 2, // 减小边框粗细，让箭头更细
-              fillColor: '#FFFFFF' // 白色填充
-            })
-
-            // 创建箭头标记
-            const arrowMarker = new window.BMap.Marker(midPoint, {
-              icon: arrowSymbol,
-              rotation: angle
-            })
-
-            this.map.addOverlay(arrowMarker)
-          }
-        }
-      } catch (e) {
-        console.error('添加方向箭头失败:', e)
-      }
-    },
-    // 统一设置路线样式并添加方向箭头
-    stylePolyline(polyline) {
+    // 设置指定颜色的路线样式并添加方向箭头
+    stylePolylineWithColor(polyline, color) {
       try {
         if (!polyline) return
-        if (polyline.setStrokeColor) polyline.setStrokeColor('#3D7EFF')
-        if (polyline.setStrokeWeight) polyline.setStrokeWeight(8)
-        if (polyline.setStrokeOpacity) polyline.setStrokeOpacity(1)
-        this.addDirectionalArrows(polyline)
-      } catch (e) { /* ignore */ }
+
+        // 只对当前polyline设置颜色，不操作其他覆盖物
+        if (polyline.setStrokeColor) {
+          polyline.setStrokeColor(color)
+        }
+        if (polyline.setStrokeWeight) {
+          polyline.setStrokeWeight(8)
+        }
+        if (polyline.setStrokeOpacity) {
+          polyline.setStrokeOpacity(1)
+        }
+
+        // 设置完颜色后刷新地图，确保样式生效
+        if (this.map) {
+          // 尝试多种方式刷新地图
+          try {
+            if (this.map.refresh) {
+              this.map.refresh()
+            }
+          } catch (e) {}
+
+          try {
+            if (this.map.redraw) {
+              this.map.redraw()
+            }
+          } catch (e) {}
+
+          // 强制重新渲染
+          try {
+            this.map.setMapStyleV2({
+              styleJson: this.map.getMapStyleV2().styleJson
+            })
+          } catch (e) {}
+        }
+      } catch (e) {
+        // 静默处理错误
+      }
     },
-    // 通用路线规划：优先骑行，失败则降级驾车，其次步行
-    createAndRunRidingRoute(startPoint, endPoint) {
-      const tryRiding = () => new Promise((resolve) => {
-        const inst = new window.BMap.RidingRoute(this.map, {
-          renderOptions: { map: this.map, autoViewport: true },
-          onPolylinesSet: (routes) => {
-            try { (routes || []).forEach(r => { const ply = r.getPolyline ? r.getPolyline() : r; if (ply) this.stylePolyline(ply) }) } catch (e) {}
-          }
+        // 添加起点和终点标记
+    addStartEndMarkers(startPoint, endPoint) {
+      try {
+        // 创建起点图标
+        const startIconSize = new window.BMap.Size(59, 77)
+        const startIconImage = new window.BMap.Icon(startIcon, startIconSize, {
+          imageOffset: new window.BMap.Size(0, 0),
+          anchor: new window.BMap.Size(29.5, 38.5)
         })
-        inst.search(startPoint, endPoint)
-        inst.setSearchCompleteCallback((rs) => resolve({ status: inst.getStatus(), rs, type: 'riding' }))
-      })
 
-      const tryDriving = () => new Promise((resolve) => {
-        const inst = new window.BMap.DrivingRoute(this.map, {
-          renderOptions: { map: this.map, autoViewport: true },
-          onPolylinesSet: (routes) => {
-            try { (routes || []).forEach(r => { const ply = r.getPolyline ? r.getPolyline() : r; if (ply) this.stylePolyline(ply) }) } catch (e) {}
-          }
+        // 创建终点图标
+        const endIconSize = new window.BMap.Size(59, 77)
+        const endIconImage = new window.BMap.Icon(endIcon, endIconSize, {
+          imageOffset: new window.BMap.Size(0, 0),
+          anchor: new window.BMap.Size(29.5, 38.5)
         })
-        inst.search(startPoint, endPoint)
-        inst.setSearchCompleteCallback((rs) => resolve({ status: inst.getStatus(), rs, type: 'driving' }))
-      })
 
-      const tryWalking = () => new Promise((resolve) => {
-        const inst = new window.BMap.WalkingRoute(this.map, {
-          renderOptions: { map: this.map, autoViewport: true },
-          onPolylinesSet: (routes) => {
-            try { (routes || []).forEach(r => { const ply = r.getPolyline ? r.getPolyline() : r; if (ply) this.stylePolyline(ply) }) } catch (e) {}
-          }
+        // 添加起点标记
+        const startMarker = new window.BMap.Marker(startPoint, {
+          icon: startIconImage,
+          enableDragging: false
         })
-        inst.search(startPoint, endPoint)
-        inst.setSearchCompleteCallback((rs) => resolve({ status: inst.getStatus(), rs, type: 'walking' }))
-      })
+        this.map.addOverlay(startMarker)
 
-      const finalize = (plan) => {
-        this.routeDistance = plan.getDistance(true)
-        this.routeTime = plan.getDuration(true)
-        try { this.map.setViewport([startPoint, endPoint]) } catch (e) {}
+        // 添加终点标记
+        const endMarker = new window.BMap.Marker(endPoint, {
+          icon: endIconImage,
+          enableDragging: false
+        })
+        this.map.addOverlay(endMarker)
+
+        // 添加起点标签
+        const startLabel = new window.BMap.Label('定位点', {
+          position: startPoint,
+          offset: new window.BMap.Size(0, -90)
+        })
+        startLabel.setStyle({
+          color: '#333',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          backgroundImage: `url(${tipIcon})`,
+          backgroundSize: 'contain',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          padding: '8px 12px',
+          whiteSpace: 'nowrap',
+          textAlign: 'center'
+        })
+        this.map.addOverlay(startLabel)
+
+        // 添加终点标签
+        const endLabel = new window.BMap.Label('目的地', {
+          position: endPoint,
+          offset: new window.BMap.Size(0, -90)
+        })
+        endLabel.setStyle({
+          color: '#333',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          backgroundImage: `url(${tipIcon})`,
+          backgroundSize: 'contain',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          padding: '8px 12px',
+          whiteSpace: 'nowrap',
+          textAlign: 'center'
+        })
+        this.map.addOverlay(endLabel)
+      } catch (e) {
+        console.error('添加起点终点标记失败:', e)
+      }
+    },
+
+        // 创建自定义起点、终点和pick点图标的辅助函数
+    createCustomMarkers() {
+      const iconConfig = {
+        containerSize: new window.BMap.Size(20, 51),
+        imageSize: new window.BMap.Size(20, 26)
       }
 
-      // 逐级尝试
-      tryRiding().then((r1) => {
-        if (r1.status === window.BMAP_STATUS_SUCCESS && r1.rs && r1.rs.getPlan && r1.rs.getPlan(0)) {
-          finalize(r1.rs.getPlan(0))
-          return
-        }
-        return tryDriving().then((r2) => {
-          if (r2.status === window.BMAP_STATUS_SUCCESS && r2.rs && r2.rs.getPlan && r2.rs.getPlan(0)) {
-            finalize(r2.rs.getPlan(0))
-            return
-          }
-          return tryWalking().then((r3) => {
-            if (r3.status === window.BMAP_STATUS_SUCCESS && r3.rs && r3.rs.getPlan && r3.rs.getPlan(0)) {
-              finalize(r3.rs.getPlan(0))
-              return
+      const startIconImage = new window.BMap.Icon(startIcon, iconConfig.containerSize, {
+        imageSize: iconConfig.imageSize
+      })
+
+      const endIconImage = new window.BMap.Icon(endIcon, iconConfig.containerSize, {
+        imageSize: iconConfig.imageSize
+      })
+
+      const pickIconImage = new window.BMap.Icon(pickIcon, iconConfig.containerSize, {
+        imageSize: iconConfig.imageSize
+      })
+
+      return { startIconImage, endIconImage, pickIconImage }
+    },
+
+    // 设置自定义标记的回调函数
+    setCustomMarkersCallback(routeInstance) {
+      routeInstance.setMarkersSetCallback((pois) => {
+        try {
+          if (pois && pois.length >= 2) {
+            const { startIconImage, endIconImage, pickIconImage } = this.createCustomMarkers()
+
+            // 处理起点标记
+            if (pois[0] && pois[0].marker) {
+              // 检查起点是否是取货点
+              if (this.pickPoint && this.isSamePoint(pois[0].point, this.pickPoint)) {
+                pois[0].marker.setIcon(pickIconImage)
+                this.addLabelIcon(pois[0].point, '取货点', tipIcon)
+              } else {
+                pois[0].marker.setIcon(startIconImage)
+                this.addLabelIcon(pois[0].point, '定位点', tipIcon)
+              }
             }
-            this.$toast && this.$toast.fail('路径规划失败')
-          })
+
+            // 处理终点标记
+            if (pois[pois.length - 1] && pois[pois.length - 1].marker) {
+              // 检查终点是否是取货点
+              if (this.pickPoint && this.isSamePoint(pois[pois.length - 1].point, this.pickPoint)) {
+                pois[pois.length - 1].marker.setIcon(pickIconImage)
+                this.addLabelIcon(pois[pois.length - 1].point, '取货点', tipIcon)
+              } else {
+                pois[pois.length - 1].marker.setIcon(endIconImage)
+                this.addLabelIcon(pois[pois.length - 1].point, '目的地', tipIcon)
+              }
+            }
+          }
+        } catch (e) {
+          console.error('设置自定义标记失败:', e)
+        }
+      })
+    },
+
+    // 检查两个点是否是同一个点
+    isSamePoint(point1, point2) {
+      if (!point1 || !point2) return false
+      const tolerance = 0.0001 // 经纬度容差
+      return Math.abs(point1.lng - point2.lng) < tolerance &&
+             Math.abs(point1.lat - point2.lat) < tolerance
+    },
+
+        // 添加标签图标的辅助函数
+    addLabelIcon(point, text, iconUrl) {
+      try {
+        const label = new window.BMap.Label(text, {
+          position: point,
+          offset: new window.BMap.Size(-29, -50)  // 向左移动10px：左偏移30px，上偏移50px
+        })
+
+        // 标签样式配置
+        const labelStyle = {
+          color: '#333',
+          fontSize: '10px',   // 调整字体大小，适应更小的标签
+          fontWeight: 'bold',
+          backgroundImage: `url(${iconUrl})`,
+          backgroundSize: '100% 100%',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundColor: 'transparent',
+          padding: '2px 6px 8px 6px',  // 上边距减少，下边距增加，让文字向上移动
+          whiteSpace: 'nowrap',
+          textAlign: 'center',
+          verticalAlign: 'middle',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          width: '58px',      // 设置固定宽度
+          height: '24.83px',  // 设置固定高度
+          border: 'none',
+          borderRadius: '8px'
+        }
+
+        label.setStyle(labelStyle)
+        this.map.addOverlay(label)
+      } catch (e) {
+        console.error('添加标签图标失败:', e)
+      }
+    },
+
+    // 添加pick点标记和标签
+    addPickPointMarker() {
+      if (!this.pickPoint || !this.map) return
+
+      try {
+        const { pickIconImage } = this.createCustomMarkers()
+
+        // 添加pick点标记
+        const pickMarker = new window.BMap.Marker(this.pickPoint, {
+          icon: pickIconImage,
+          enableDragging: false
+        })
+        this.map.addOverlay(pickMarker)
+
+        // 添加pick点标签
+        this.addLabelIcon(this.pickPoint, '取货点', tipIcon)
+      } catch (e) {
+        // 静默处理错误
+      }
+    },
+
+        // 通用路线规划：优先骑行，失败则降级驾车，其次步行
+    createAndRunRidingRoute(startPoint, endPoint) {
+      // 如果有pick点，进行两阶段规划：定位点->取货点->目的地
+      this.createTwoStageRoute(startPoint, this.pickPoint, endPoint)
+    },
+        // 创建两阶段路线规划：定位点->取货点->目的地
+    createTwoStageRoute(startPoint, pickPoint, endPoint) {
+      // 第一阶段：定位点 -> 取货点
+      this.createRouteStage(startPoint, pickPoint, '第一阶段：定位点->取货点', () => {
+        // 第一阶段完成后，开始第二阶段
+        this.createRouteStage(pickPoint, endPoint, '第二阶段：取货点->目的地', () => {
+          // 设置地图视野，包含所有点
+          try { this.map.setViewport([startPoint, pickPoint, endPoint]) } catch (e) {}
+
+          // 添加pick点标记（因为pick点不在路线规划中，需要单独添加）
+          if (this.pickPoint) {
+            this.addPickPointMarker()
+          }
         })
       })
     },
+
+    // 创建路线阶段
+    createRouteStage(fromPoint, toPoint, stageName, onComplete) {
+      let that = this
+      const tryRiding = () => new Promise((resolve) => {
+        const inst = new window.BMap.RidingRoute(this.map, {
+          renderOptions: { map: this.map, autoViewport: false }, // 不自动调整视野
+          onPolylinesSet: (routes) => {
+              (routes || []).forEach((r, index) => {
+                let ply = null
+
+                // 尝试多种方式获取polyline对象
+                if (r.getPolyline) {
+                  ply = r.getPolyline()
+                } else if (r.polyline) {
+                  ply = r.polyline
+                } else if (r.getPath) {
+                  ply = r
+                } else {
+                  ply = r
+                }
+
+                if (ply) {
+                  // 延迟设置颜色，确保polyline完全渲染
+                  setTimeout(() => {
+                    const overlays = this.map.getOverlays()
+                    if(that.overlaysNum == 0) {
+                      that.overlaysNum = overlays.length
+                    }
+                    // 根据阶段设置不同颜色
+                    overlays.forEach((overlay, index) => {
+                      try {
+                        // 检查是否是路线对象
+                        if (overlay.getPath && overlay.getPath().length > 0) {
+                          // 根据阶段名称设置不同颜色
+                          if (index < that.overlaysNum) {
+                            // 定位点到取货点：绿色
+                            if (overlay.setStrokeColor) overlay.setStrokeColor('#00AD58')
+                          } 
+                          // 设置统一的样式
+                          if (overlay.setStrokeWeight) overlay.setStrokeWeight(8)
+                          if (overlay.setStrokeOpacity) overlay.setStrokeOpacity(1)
+                        }
+                      } catch (e) {
+                        // 静默处理错误
+                      }
+                    })
+                  }, 100)
+                }
+              })
+          }
+        })
+
+        // 设置自定义标记回调
+        this.setCustomMarkersCallback(inst)
+
+        inst.search(fromPoint, toPoint)
+        inst.setSearchCompleteCallback((rs) => {
+          resolve({ status: inst.getStatus(), rs, type: 'riding' })
+        })
+      })
+
+      // 只尝试骑行方案
+      tryRiding().then((r1) => {
+        if (r1.status === window.BMAP_STATUS_SUCCESS && r1.rs && r1.rs.getPlan && r1.rs.getPlan(0)) {
+          onComplete()
+        } else {
+          this.$toast && this.$toast.fail(`${stageName}失败`)
+        }
+      })
+    },
+
     // 坐标转换：BD09转GCJ02
     bd09ToGcj02(bdLng, bdLat) {
       const x = bdLng - 0.0065
@@ -411,9 +607,8 @@ export default {
           this.map.setMapStyleV2({
             styleJson: mapStyle
           })
-          console.log('地图样式已应用，使用自定义样式 V2')
         } catch (styleError) {
-          console.error('样式应用失败:', styleError)
+          // 静默处理样式应用失败
         }
 
         // 启用各种缩放功能
@@ -422,20 +617,15 @@ export default {
         this.map.enablePinchToZoom(false) // 禁用移动端双指缩放
 
         // 检查缩放功能是否启用
-        console.log('缩放功能状态:')
-        console.log('- 地图缩放级别:', this.map.getZoom())
-        console.log('- 地图中心点:', this.map.getCenter())
-        console.log('- 地图实例:', this.map)
 
         // RoutePlan 精简：无需联想/输入框/预定位
 
         // 地图初始化完成后再读取URL并规划路径（确保map已就绪）
         this.parseDestinationFromUrl()
         this.startNavigation()
-      } catch (error) {
-        console.error('地图初始化失败:', error)
-        this.$toast && this.$toast.fail('地图初始化失败')
-      }
+              } catch (error) {
+          this.$toast && this.$toast.fail('地图初始化失败')
+        }
     },
     locateToCurrent() {
       // 点击定位时调用安卓注入方法
@@ -460,13 +650,10 @@ export default {
           this.locationPoint = point
           this.startPoint = point
 
-
-
           // 定位成功，隐藏提示条
           this.showLocationTip = false
         },
         (error) => {
-          console.error('获取位置失败:', error)
           // 无论何种错误，回落到默认中心
           const defaultPoint = new window.BMap.Point(120.019, 30.274)
           this.map.panTo(defaultPoint)
@@ -488,8 +675,6 @@ export default {
         }
       )
     },
-
-
     // 检查定位权限
     checkLocationPermission() {
       if (!navigator.permissions) {
@@ -520,7 +705,7 @@ export default {
           try {
             window.AndroidInterface.openLocationSettings()
           } catch (e) {
-            console.log('调用原生方法失败')
+            // 静默处理错误
           }
         }
       } else {
@@ -528,21 +713,6 @@ export default {
         this.locateToCurrent()
       }
     },
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   }
 }
 </script>
