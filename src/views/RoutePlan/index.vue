@@ -14,6 +14,17 @@
       </div>
       <button class="tip-button" @click="enableLocation">开启</button>
     </div>
+
+    <!-- 交通信息按钮 -->
+    <div class="traffic-button-container">
+      <button
+        class="traffic-button"
+        @click="getTrafficInfo"
+        :disabled="loadingTraffic"
+      >
+        {{ loadingTraffic ? '获取中...' : '获取交通信息' }}
+      </button>
+    </div>
   </div>
 </template>
 
@@ -42,6 +53,9 @@ export default {
       pickPoint: null,
       hasPlanned: false,
       overlaysNum: 0,
+      trafficData: null,
+      loadingTraffic: false,
+      trafficOverlays: [], // 存储交通标注
     }
   },
   async mounted() {
@@ -59,6 +73,19 @@ export default {
     }
   },
   methods: {
+    // 禁用覆盖物点击后弹出信息
+    suppressOverlayClick(overlay) {
+      try {
+        if (!overlay || !overlay.addEventListener) return
+        const handler = (e) => {
+          try { this.map && this.map.closeInfoWindow && this.map.closeInfoWindow() } catch (e2) {}
+          if (e && e.domEvent && e.domEvent.stopPropagation) e.domEvent.stopPropagation()
+          return false
+        }
+        overlay.addEventListener('click', handler)
+      } catch (e) { }
+    },
+
 
     // 从URL读取终点经纬度并纠正常见的经纬度颠倒
     parseDestinationFromUrl() {
@@ -117,8 +144,8 @@ export default {
       // 先将视野移动到终点以便用户有反馈
       try { this.map.centerAndZoom(this.endPoint, 16) } catch (e) {}
 
-      // 写死的起点：与默认“我的位置”一致，方便视觉一致
-      const fallbackStartPoint = new window.BMap.Point(120.019, 30.274)
+      // 写死的起点：与默认"我的位置"一致，方便视觉一致
+      const fallbackStartPoint = new window.BMap.Point(120.170700, 30.257069)
 
       // 超时保护：若定位迟迟无结果，则使用写死起点进行模拟规划
       const guardTimer = setTimeout(() => {
@@ -278,6 +305,8 @@ export default {
                 pois[0].marker.setIcon(startIconImage)
                 this.addLabelIcon(pois[0].point, '定位点', tipIcon)
               }
+              // 禁用点击展示信息
+              this.suppressOverlayClick(pois[0].marker)
             }
 
             // 处理终点标记
@@ -290,6 +319,8 @@ export default {
                 pois[pois.length - 1].marker.setIcon(endIconImage)
                 this.addLabelIcon(pois[pois.length - 1].point, '目的地', tipIcon)
               }
+              // 禁用点击展示信息
+              this.suppressOverlayClick(pois[pois.length - 1].marker)
             }
           }
         } catch (e) {
@@ -373,22 +404,46 @@ export default {
         // 创建两阶段路线规划：定位点->取货点->目的地
     createTwoStageRoute(startPoint, pickPoint, endPoint) {
       // 第一阶段：定位点 -> 取货点
-      this.createRouteStage(startPoint, pickPoint, '第一阶段：定位点->取货点', () => {
-        // 第一阶段完成后，开始第二阶段
-        this.createRouteStage(pickPoint, endPoint, '第二阶段：取货点->目的地', () => {
-          // 设置地图视野，包含所有点
-          try { this.map.setViewport([startPoint, pickPoint, endPoint]) } catch (e) {}
+      this.createRouteStage(
+        startPoint,
+        pickPoint,
+        '第一阶段：定位点->取货点',
+        () => {
+          // 第一阶段完成后，开始第二阶段
+          this.createRouteStage(pickPoint, endPoint, '第二阶段：取货点->目的地', () => {
+            // 设置地图视野，包含所有点
+            try { this.map.setViewport([startPoint, pickPoint, endPoint]) } catch (e) {}
 
-          // 添加pick点标记（因为pick点不在路线规划中，需要单独添加）
-          if (this.pickPoint) {
-            this.addPickPointMarker()
-          }
-        })
-      })
+            // 添加pick点标记（因为pick点不在路线规划中，需要单独添加）
+            if (this.pickPoint) {
+              this.addPickPointMarker()
+            }
+          })
+        },
+        // 第一阶段失败时，显示当前定位点后，直接走 取货点->目的地
+        () => {
+          try {
+            const { startIconImage } = this.createCustomMarkers()
+            const startMarker = new window.BMap.Marker(startPoint, {
+              icon: startIconImage,
+              enableDragging: false
+            })
+            this.map.addOverlay(startMarker)
+            this.addLabelIcon(startPoint, '定位点', tipIcon)
+          } catch (e) { }
+
+          this.createRouteStage(pickPoint, endPoint, '第二阶段：取货点->目的地', () => {
+            try { this.map.setViewport([startPoint, pickPoint, endPoint]) } catch (e) {}
+            if (this.pickPoint) {
+              this.addPickPointMarker()
+            }
+          })
+        }
+      )
     },
 
     // 创建路线阶段
-    createRouteStage(fromPoint, toPoint, stageName, onComplete) {
+    createRouteStage(fromPoint, toPoint, stageName, onComplete, onFail) {
       let that = this
       const tryRiding = () => new Promise((resolve) => {
         const inst = new window.BMap.RidingRoute(this.map, {
@@ -424,10 +479,12 @@ export default {
                           if (index < that.overlaysNum) {
                             // 定位点到取货点：绿色
                             if (overlay.setStrokeColor) overlay.setStrokeColor('#00AD58')
-                          } 
+                          }
                           // 设置统一的样式
                           if (overlay.setStrokeWeight) overlay.setStrokeWeight(8)
                           if (overlay.setStrokeOpacity) overlay.setStrokeOpacity(1)
+                          // 禁用点击展示信息
+                          that.suppressOverlayClick(overlay)
                         }
                       } catch (e) {
                         // 静默处理错误
@@ -442,6 +499,9 @@ export default {
         // 设置自定义标记回调
         this.setCustomMarkersCallback(inst)
 
+        // 清空并禁止路线信息弹窗
+        try { inst.setInfoHtmlSetCallback && inst.setInfoHtmlSetCallback(() => '') } catch (e) {}
+
         inst.search(fromPoint, toPoint)
         inst.setSearchCompleteCallback((rs) => {
           resolve({ status: inst.getStatus(), rs, type: 'riding' })
@@ -451,9 +511,13 @@ export default {
       // 只尝试骑行方案
       tryRiding().then((r1) => {
         if (r1.status === window.BMAP_STATUS_SUCCESS && r1.rs && r1.rs.getPlan && r1.rs.getPlan(0)) {
-          onComplete()
+          onComplete && onComplete()
         } else {
-          this.$toast && this.$toast.fail(`${stageName}失败`)
+          if (onFail) {
+            onFail(r1)
+          } else {
+            this.$toast && this.$toast.fail(`${stageName}失败`)
+          }
         }
       })
     },
@@ -488,8 +552,8 @@ export default {
           }
         })
 
-        // 设置地图中心点（默认杭州市余杭区EFC中心）
-        const point = new window.BMap.Point(116.391, 39.906217)
+        // 设置地图中心点（默认位置）
+        const point = new window.BMap.Point(120.170700, 30.257069)
         this.map.centerAndZoom(point, 18)
 
         // 应用地图样式
@@ -586,7 +650,7 @@ export default {
       try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
       if (!navigator.geolocation) {
         this.$toast && this.$toast.fail('浏览器不支持定位，使用默认位置')
-        const defaultPoint = new window.BMap.Point(120.019, 30.274)
+        const defaultPoint = new window.BMap.Point(120.170700, 30.257069)
         this.map.panTo(defaultPoint)
         this.locationPoint = defaultPoint
         this.startPoint = defaultPoint
@@ -608,7 +672,7 @@ export default {
         },
         (error) => {
           // 无论何种错误，回落到默认中心
-          const defaultPoint = new window.BMap.Point(120.019, 30.274)
+          const defaultPoint = new window.BMap.Point(120.170700, 30.257069)
           this.map.panTo(defaultPoint)
           this.locationPoint = defaultPoint
           this.startPoint = defaultPoint
@@ -646,6 +710,415 @@ export default {
     },
 
         // 开启定位功能
+    // 获取交通信息
+    async getTrafficInfo() {
+      if (!this.map) {
+        this.$toast && this.$toast('地图未初始化')
+        return
+      }
+
+      this.loadingTraffic = true
+      try {
+        // 获取地图中心点坐标
+        const center = this.map.getCenter()
+        console.log('地图中心点坐标:', center)
+
+        // 确保坐标格式正确 - 百度地图API需要 纬度,经度 格式
+        const lng = parseFloat(center.lng).toFixed(6)
+        const lat = parseFloat(center.lat).toFixed(6)
+        const centerStr = `${lat},${lng}` // 注意：百度地图API需要纬度在前
+
+        console.log('发送的坐标参数:', centerStr)
+
+        // 调用后端API获取交通信息
+        const response = await this.$http.get('http://localhost:3001/api/baidu/traffic', {
+          params: {
+            center: centerStr,
+            radius: 500 // 500米半径
+          }
+        })
+
+        this.trafficData = response.data
+        console.log('交通信息响应:', response.data)
+
+        // 检查API返回状态
+        if (response.data.status !== 0) {
+          this.$toast && this.$toast(`API错误: ${response.data.message}`)
+          return
+        }
+
+        // 显示交通信息
+        this.showTrafficInfo(response.data)
+
+      } catch (error) {
+        console.error('获取交通信息失败:', error)
+        this.$toast && this.$toast('获取交通信息失败')
+      } finally {
+        this.loadingTraffic = false
+      }
+    },
+
+    // 显示交通信息（优先解析 road_traffic，其次回退 description）
+    showTrafficInfo(data) {
+      if (!data) {
+        this.$toast && this.$toast('暂无交通信息')
+        return
+      }
+
+      let parsedInfo = { overallStatus: '', roads: [] }
+
+      if (Array.isArray(data.road_traffic) && data.road_traffic.length > 0) {
+        parsedInfo.overallStatus = (data.evaluation && data.evaluation.status_desc) || ''
+        parsedInfo.roads = this.buildRoadsFromRoadTraffic(data.road_traffic)
+      } else if (data.description) {
+        parsedInfo = this.parseTrafficDescription(data.description)
+      }
+
+      if (!parsedInfo.roads || parsedInfo.roads.length === 0) {
+        this.$toast && this.$toast('暂无交通信息')
+        return
+      }
+
+      // 地图渲染
+      this.displayTrafficOnMap(parsedInfo)
+
+      // 简要提示
+      let message = parsedInfo.overallStatus ? `整体状况：${parsedInfo.overallStatus}\n\n` : ''
+      message += '拥堵路段：\n'
+      parsedInfo.roads.slice(0, 3).forEach(r => {
+        message += `${r.name}${r.direction ? ' ' + r.direction : ''}：${r.location || '—'}\n`
+      })
+      this.$toast && this.$toast(message)
+    },
+
+    // 将 road_traffic 结构转换为渲染所需的 roads 数组
+    buildRoadsFromRoadTraffic(roadTrafficList) {
+      const roads = []
+      try {
+        for (const item of roadTrafficList) {
+          const roadName = (item.road_name || '').trim().replace(/[。，、]/g, '')
+          const sections = Array.isArray(item.congestion_sections) ? item.congestion_sections : []
+
+          if (sections.length > 0) {
+            for (const sec of sections) {
+              const desc = (sec.section_desc || '').trim()
+              let direction = ''
+              let location = desc
+              const ci = desc.indexOf(',')
+              if (ci !== -1) {
+                direction = desc.slice(0, ci).trim()
+                location = desc.slice(ci + 1).trim()
+              }
+              const level = this.mapStatusToLevel(sec.status)
+              roads.push({ name: roadName, direction, location, congestionLevel: level })
+            }
+          } else {
+            // 无分段时，使用 road 层级的状态（如有），仅按道路名渲染
+            const level = this.mapStatusToLevel(item.status)
+            if (level !== '未知') {
+              roads.push({ name: roadName, direction: '', location: '', congestionLevel: level })
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+      return roads
+    },
+
+    // 将数值 status 映射为文字等级
+    mapStatusToLevel(status) {
+      switch (status) {
+        case 1: return '畅通'
+        case 2: return '缓慢'
+        case 3: return '拥堵'
+        case 4: return '严重拥堵'
+        default: return '未知'
+      }
+    },
+
+    // 解析交通信息描述
+    parseTrafficDescription(description) {
+      const result = {
+        overallStatus: '',
+        roads: []
+      };
+
+      // 提取整体状况
+      const overallMatch = description.match(/该区域整体([^。]+) 。|该区域整体([^。]+)。/);
+      if (overallMatch) {
+        const status = (overallMatch[1] || overallMatch[2] || '').trim()
+        result.overallStatus = status.replace(/[。，、]/g, '')
+      }
+
+      // 去掉整体状况句子，避免干扰后续解析
+      const body = description.replace(/^该区域整体[^。]*。\s*/, '')
+
+      // 按句号拆分每个路段句
+      const sentences = body.split('。').map(s => s.trim()).filter(Boolean)
+      for (const sentence of sentences) {
+        if (!sentence.includes('：')) continue
+        const idx = sentence.indexOf('：')
+        const rawName = sentence.slice(0, idx)
+        const details = sentence.slice(idx + 1)
+        const roadName = rawName.trim().replace(/[。，、]/g, '')
+        if (!roadName || !details) continue
+
+        // 分号可拆成多段
+        const segments = details.split(/[；;]+/).map(s => s.trim()).filter(Boolean)
+        for (const seg of segments) {
+          let direction = ''
+          let location = seg
+          const ci = seg.indexOf(',')
+          if (ci !== -1) {
+            direction = seg.slice(0, ci).trim()
+            location = seg.slice(ci + 1).trim()
+          }
+
+          // 判断拥堵程度（优先严重拥堵）
+          let congestionLevel = '畅通'
+          if (location.includes('严重拥堵')) congestionLevel = '严重拥堵'
+          else if (location.includes('拥堵')) congestionLevel = '拥堵'
+          else if (location.includes('缓慢')) congestionLevel = '缓慢'
+
+          result.roads.push({
+            name: roadName,
+            direction,
+            location,
+            congestionLevel
+          })
+        }
+      }
+
+      return result;
+    },
+
+    // 在地图上显示交通状况
+    async displayTrafficOnMap(trafficInfo) {
+      if (!this.map || !trafficInfo.roads.length) return;
+
+      // 清除之前的交通标注
+      this.clearTrafficOverlays();
+
+      // 为每条拥堵路段添加标注
+      for (let i = 0; i < trafficInfo.roads.length; i++) {
+        await this.addRoadTrafficOverlay(trafficInfo.roads[i], i);
+        // 添加小延迟，避免同时搜索太多道路
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // 整体状况信息已处理，不再显示弹窗
+    },
+
+    // 添加道路交通标注
+    async addRoadTrafficOverlay(road, index) {
+      try {
+        // 获取道路坐标
+        let roadCoords = await this.getRoadCoordinates(road.name);
+
+        // 若按路名未取到坐标，尝试依据“从A到B/附近X”解析位置并地理编码
+        if (!roadCoords || roadCoords.length === 0) {
+          roadCoords = await this.getSegmentCoordinatesFromLocation(road.location)
+        }
+
+        if (roadCoords && roadCoords.length > 0) {
+          // 根据拥堵程度设置颜色
+          const color = this.getCongestionColor(road.congestionLevel);
+
+          // 绘制道路线段
+          const polyline = new window.BMap.Polyline(roadCoords, {
+            strokeColor: color,
+            strokeWeight: 6,
+            strokeOpacity: 0.8
+          });
+
+          // 添加点击事件
+          polyline.addEventListener('click', () => {
+            this.showRoadDetailInfo(road);
+          });
+
+          // 添加到地图
+          this.map.addOverlay(polyline);
+          this.trafficOverlays.push(polyline);
+
+          // 添加道路名称标签
+          if (roadCoords.length > 0) {
+            const midPoint = roadCoords[Math.floor(roadCoords.length / 2)];
+            const label = new window.BMap.Label(road.name, {
+              position: midPoint,
+              offset: new window.BMap.Size(0, -20)
+            });
+
+            label.setStyle({
+              color: color,
+              fontSize: '12px',
+              fontWeight: 'bold',
+              backgroundColor: 'rgba(255,255,255,0.8)',
+              border: '1px solid ' + color,
+              borderRadius: '3px',
+              padding: '2px 5px'
+            });
+
+            this.map.addOverlay(label);
+            this.trafficOverlays.push(label);
+          }
+        }
+      } catch (error) {
+        console.error('添加道路标注失败:', error);
+      }
+    },
+
+    // 依据“从A到B/XXX附近”从描述中解析出两端点并地理编码
+    async getSegmentCoordinatesFromLocation(locationText) {
+      try {
+        if (!locationText || !window.BMap) return []
+        const gc = new window.BMap.Geocoder()
+
+        const getPoint = (keyword) => new Promise((resolve) => {
+          try {
+            // 使用当前地图中心城市提升匹配准确度
+            const center = this.map && this.map.getCenter ? this.map.getCenter() : null
+            const city = null // 保持null，BMap会使用默认城市；如需可扩展成反查城市名
+            gc.getPoint(keyword, (pt) => {
+              resolve(pt || null)
+            }, city)
+          } catch (e) {
+            resolve(null)
+          }
+        })
+
+        // 处理“从A到B”
+        const m = locationText.match(/从([^到]+)到(.+?)(?:$|，|,|。)/)
+        if (m) {
+          const a = (m[1] || '').trim()
+          const b = (m[2] || '').trim()
+          const [p1, p2] = await Promise.all([getPoint(a), getPoint(b)])
+          if (p1 && p2) return [p1, p2]
+        }
+
+        // 处理“X附近”
+        const n = locationText.match(/([^，,。]+)附近/)
+        if (n) {
+          const k = (n[1] || '').trim()
+          const p = await getPoint(k)
+          if (p) {
+            return [p, new window.BMap.Point(p.lng + 0.001, p.lat)]
+          }
+        }
+
+        return []
+      } catch (e) {
+        return []
+      }
+    },
+
+    // 获取道路坐标（搜索多个同名POI并拼接成折线，更贴近真实路段）
+    async getRoadCoordinates(roadName) {
+      return new Promise((resolve) => {
+        try {
+          if (!window.BMap) {
+            resolve([])
+            return
+          }
+
+          const points = []
+          const local = new window.BMap.LocalSearch(this.map, {
+            pageCapacity: 50,
+            onSearchComplete: (results) => {
+              try {
+                if (local.getStatus() === window.BMAP_STATUS_SUCCESS && results.getNumPois() > 0) {
+                  const num = results.getNumPois()
+                  const cleanRoad = (roadName || '').replace(/[\s·.,，。]/g, '')
+                  for (let i = 0; i < num; i++) {
+                    const poi = results.getPoi(i)
+                    if (!poi) continue
+                    const title = (poi.title || '').replace(/[\s·.,，。]/g, '')
+                    if (title.includes(cleanRoad) && poi.point) {
+                      points.push(poi.point)
+                    }
+                  }
+
+                  if (points.length >= 2) {
+                    // 根据主方向排序，保证折线方向自然
+                    const lngs = points.map(p => p.lng)
+                    const lats = points.map(p => p.lat)
+                    const varLng = Math.max(...lngs) - Math.min(...lngs)
+                    const varLat = Math.max(...lats) - Math.min(...lats)
+                    const sorted = points.sort((a, b) => (varLng >= varLat) ? (a.lng - b.lng) : (a.lat - b.lat))
+                    // 返回首尾两点，绘制为一条直线段
+                    resolve([sorted[0], sorted[sorted.length - 1]])
+                    return
+                  }
+
+                  if (points.length === 1) {
+                    const p = points[0]
+                    resolve([p, new window.BMap.Point(p.lng + 0.001, p.lat)])
+                    return
+                  }
+
+                  resolve([])
+                } else {
+                  resolve([])
+                }
+              } catch (e) {
+                resolve([])
+              }
+            }
+          })
+
+          local.search(roadName)
+        } catch (e) {
+          resolve([])
+        }
+      })
+    },
+
+    // 获取拥堵程度对应的颜色
+    getCongestionColor(level) {
+      const colors = {
+        '畅通': '#00ff00',    // 绿色
+        '缓慢': '#ffa500',    // 橙色（更清晰可见）
+        '拥堵': '#ff4d4f',    // 亮红色
+        '严重拥堵': '#a8071a' // 深红色
+      };
+      return colors[level] || '#666666';
+    },
+
+    // 显示道路详细信息
+    showRoadDetailInfo(road) {
+      const content = `
+        <div style="padding: 10px;">
+          <h4 style="margin: 0 0 5px 0; color: #333;">${road.name}</h4>
+          <p style="margin: 2px 0; color: #666;">方向：${road.direction}</p>
+          <p style="margin: 2px 0; color: #666;">位置：${road.location}</p>
+          <p style="margin: 2px 0; color: ${this.getCongestionColor(road.congestionLevel)}; font-weight: bold;">
+            状况：${road.congestionLevel}
+          </p>
+        </div>
+      `;
+
+      const infoWindow = new window.BMap.InfoWindow(content, {
+        width: 200,
+        height: 120
+      });
+
+      // 在道路中点显示信息窗口
+      const roadCoords = this.getRoadCoordinates(road.name);
+      if (roadCoords.length > 0) {
+        const midPoint = roadCoords[Math.floor(roadCoords.length / 2)];
+        this.map.openInfoWindow(infoWindow, midPoint);
+      }
+    },
+
+
+    // 清除交通标注
+    clearTrafficOverlays() {
+      if (this.trafficOverlays) {
+        this.trafficOverlays.forEach(overlay => {
+          this.map.removeOverlay(overlay);
+        });
+        this.trafficOverlays = [];
+      }
+    },
+
     enableLocation() {
       if (this.locationPermission === 'denied') {
         // 用户之前拒绝了权限，引导用户手动开启
@@ -708,6 +1181,40 @@ export default {
 .tip-icon { width: 16px; height: 16px; background: #FF4D4F; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
 .tip-text { font-size: 13px; color: #E22A2A; font-weight: 600; }
 .tip-button { background: #FF4835; color: #fff; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+
+/* 交通信息按钮样式 */
+.traffic-button-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.traffic-button {
+  background: #1890ff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+}
+
+.traffic-button:hover:not(:disabled) {
+  background: #40a9ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.traffic-button:disabled {
+  background: #d9d9d9;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
 
 </style>
 

@@ -1,4 +1,5 @@
 import Vue from 'vue'
+import axios from 'axios'
 
 import 'normalize.css/normalize.css' // A modern alternative to CSS resets
 
@@ -17,6 +18,9 @@ import router from './router'
 
 // 全局挂载 Vant Toast
 Vue.prototype.$toast = Toast
+
+// 全局挂载 axios
+Vue.prototype.$http = axios
 
 // 移除 vConsole 初始化
 
