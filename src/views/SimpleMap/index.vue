@@ -519,7 +519,7 @@ export default {
 .custom-element {
   position: fixed;
   right: 4.44vw; /* 距离右侧16px (16/360) */
-  bottom: 19.25vh; /* 距离下方138px (138/800) */
+  bottom: 10vh; /* 距离下方138px (138/800) */
   width: 16.67vw; /* 60px (60/360) */
   height: 15vh; /* 120px (120/800) */
   background: #FFFFFF;

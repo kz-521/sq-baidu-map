@@ -8,12 +8,10 @@ export const constantRoutes = [
     component: () => import('@/views/404'),
     hidden: true
   },
-
   {
     path: '/',
     redirect: '/BMap/index'
   },
-
   {
     path: '/BMap',
     redirect: '/BMap/index'
@@ -29,12 +27,6 @@ export const constantRoutes = [
     name: 'HeatMap',
     component: () => import('@/views/HeatMap/index'),
     meta: { title: 'HeatMap', icon: 'map' }
-  },
-  {
-    path: '/ShopNav/index',
-    name: 'ShopNav',
-    component: () => import('@/views/shopNav/index'),
-    meta: { title: 'ShopNav', icon: 'map' }
   },
   {
     path: '/RoutePlan/index',

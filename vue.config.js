@@ -5,7 +5,7 @@ function resolve(dir) {
   return path.join(__dirname, dir)
 }
 
-const name = '骑士助手' // page title
+const name = '路径规划' // page title
 const port = process.env.port || process.env.npm_config_port || 8383 // dev port
 module.exports = {
   publicPath: process.env.NODE_ENV === 'production' ? './' : '/',
