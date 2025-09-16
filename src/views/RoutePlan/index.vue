@@ -16,7 +16,7 @@
     </div>
 
     <!-- 交通信息按钮 -->
-    <div class="traffic-button-container">
+    <!-- <div class="traffic-button-container">
       <button
         class="traffic-button"
         @click="getTrafficInfo"
@@ -24,7 +24,7 @@
       >
         {{ loadingTraffic ? '获取中...' : '获取交通信息' }}
       </button>
-    </div>
+    </div> -->
   </div>
 </template>
 

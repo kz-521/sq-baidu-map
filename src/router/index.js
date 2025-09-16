@@ -42,6 +42,18 @@ export const constantRoutes = [
     component: () => import('@/views/RoutePlan/index'),
     meta: { title: 'RoutePlan', icon: 'map' }
   },
+  {
+    path: '/SingleRoutePlan/index',
+    name: 'SingleRoutePlan',
+    component: () => import('@/views/SingleRoutePlan/index'),
+    meta: { title: 'SingleRoutePlan', icon: 'map' }
+  },
+  {
+    path: '/SimpleMap/index',
+    name: 'SimpleMap',
+    component: () => import('@/views/SimpleMap/index'),
+    meta: { title: 'SimpleMap', icon: 'map' }
+  },
   { path: '*', redirect: '/404', hidden: true }
 ]
 
