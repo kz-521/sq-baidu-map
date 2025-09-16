@@ -40,7 +40,8 @@ export default {
       startPoint: null,
       endPoint: null,
       hasPlanned: false,
-      overlaysNum: 0
+      overlaysNum: 0,
+      routeType: 'driving' // driving|riding|walking
     }
   },
   async mounted() {
@@ -91,6 +92,22 @@ export default {
         this.endLocationText = '目的地'
         try { if (this.map) this.map.panTo(this.endPoint) } catch (e) {}
       } catch (e) { /* ignore */ }
+    },
+
+    // 解析路线类型：type=0(驾车) 1(骑行) 2(步行)；默认驾车
+    parseRouteTypeFromUrl() {
+      try {
+        const q = this.$route && this.$route.query ? this.$route.query : {}
+        const tRaw = q.type != null ? String(q.type).trim() : ''
+        let t = parseInt(tRaw, 10)
+        if (!Number.isFinite(t)) t = 0
+        if (t === 0) this.routeType = 'driving'
+        else if (t === 1) this.routeType = 'riding'
+        else if (t === 2) this.routeType = 'walking'
+        else this.routeType = 'driving'
+      } catch (_) {
+        this.routeType = 'driving'
+      }
     },
 
 
@@ -325,78 +342,37 @@ export default {
     // 创建路线阶段
     createRouteStage(fromPoint, toPoint, stageName, onComplete, onFail) {
       let that = this
-      const tryRiding = () => new Promise((resolve) => {
-        const inst = new window.BMap.RidingRoute(this.map, {
-          renderOptions: { map: this.map, autoViewport: false }, // 不自动调整视野
-          onPolylinesSet: (routes) => {
-              (routes || []).forEach((r, index) => {
-                let ply = null
+      try {
+        const RouteClass = this.routeType === 'riding'
+          ? (window.BMap && window.BMap.RidingRoute)
+          : this.routeType === 'walking'
+            ? (window.BMap && window.BMap.WalkingRoute)
+            : (window.BMap && window.BMap.DrivingRoute)
 
-                // 尝试多种方式获取polyline对象
-                if (r.getPolyline) {
-                  ply = r.getPolyline()
-                } else if (r.polyline) {
-                  ply = r.polyline
-                } else if (r.getPath) {
-                  ply = r
-                } else {
-                  ply = r
-                }
+        if (!RouteClass) {
+          this.$toast && this.$toast('路线服务未就绪')
+          return
+        }
 
-                if (ply) {
-                  // 延迟设置颜色，确保polyline完全渲染
-                  setTimeout(() => {
-                    const overlays = this.map.getOverlays()
-                    if(that.overlaysNum == 0) {
-                      that.overlaysNum = overlays.length
-                    }
-                    // 设置路线样式
-                    overlays.forEach((overlay, index) => {
-                      try {
-                        // 检查是否是路线对象
-                        if (overlay.getPath && overlay.getPath().length > 0) {
-                          // 设置路线颜色为蓝色
-                          if (overlay.setStrokeColor) overlay.setStrokeColor('#1890ff')
-                          // 设置统一的样式
-                          if (overlay.setStrokeWeight) overlay.setStrokeWeight(6)
-                          if (overlay.setStrokeOpacity) overlay.setStrokeOpacity(0.8)
-                          // 禁用点击展示信息
-                          that.suppressOverlayClick(overlay)
-                        }
-                      } catch (e) {
-                        // 静默处理错误
-                      }
-                    })
-                  }, 100)
-                }
-              })
-          }
+        const inst = new RouteClass(this.map, {
+          renderOptions: { map: this.map, autoViewport: false }
         })
 
         // 设置自定义标记回调
         this.setCustomMarkersCallback(inst)
-
         // 清空并禁止路线信息弹窗
         try { inst.setInfoHtmlSetCallback && inst.setInfoHtmlSetCallback(() => '') } catch (e) {}
 
         inst.search(fromPoint, toPoint)
         inst.setSearchCompleteCallback((rs) => {
-          resolve({ status: inst.getStatus(), rs, type: 'riding' })
+          const ok = inst.getStatus && inst.getStatus() === window.BMAP_STATUS_SUCCESS && rs && rs.getPlan && rs.getPlan(0)
+          if (ok) onComplete && onComplete()
+          else if (onFail) onFail(rs)
+          else this.$toast && this.$toast.fail(`${stageName}失败`)
         })
-      })
-
-      // 只尝试骑行方案
-      tryRiding().then((r1) => {
-        if (r1.status === window.BMAP_STATUS_SUCCESS && r1.rs && r1.rs.getPlan && r1.rs.getPlan(0)) {
-          onComplete && onComplete()
-        } else {
-          if (onFail) {
-            onFail(r1)
-          } else {
-            this.$toast && this.$toast.fail(`${stageName}失败`)
-          }
-        }
-      })
+      } catch (e) {
+        this.$toast && this.$toast.fail('路线规划失败')
+      }
     },
 
     // 坐标转换：BD09转GCJ02
@@ -517,6 +493,7 @@ export default {
 
         // 地图初始化完成后再读取URL并规划路径（确保map已就绪）
         this.parseDestinationFromUrl()
+        this.parseRouteTypeFromUrl()
         this.startNavigation()
       } catch (error) {
         this.$toast && this.$toast.fail('地图初始化失败')
