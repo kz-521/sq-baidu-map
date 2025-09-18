@@ -14,17 +14,6 @@
       </div>
       <button class="tip-button" @click="enableLocation">开启</button>
     </div>
-
-    <!-- 交通信息按钮 -->
-    <!-- <div class="traffic-button-container">
-      <button
-        class="traffic-button"
-        @click="getTrafficInfo"
-        :disabled="loadingTraffic"
-      >
-        {{ loadingTraffic ? '获取中...' : '获取交通信息' }}
-      </button>
-    </div> -->
   </div>
 </template>
 
@@ -35,6 +24,7 @@ import endIcon from '@/assets/end.png'
 import pickIcon from '@/assets/pick.png'
 import tipIcon from '@/assets/tip.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
+import { gcj02tobd09 } from '@/utils/coord'
 
 export default {
   name: 'RoutePlan',
@@ -101,7 +91,12 @@ export default {
           const t = lat; lat = lng; lng = t
           this.$toast && this.$toast('检测到经纬度顺序颠倒，已自动纠正')
         }
-        this.endPoint = new window.BMap.Point(lng, lat)
+        try {
+          const [bdLng, bdLat] = gcj02tobd09(lng, lat)
+          this.endPoint = new window.BMap.Point(bdLng, bdLat)
+        } catch (e2) {
+          this.endPoint = new window.BMap.Point(lng, lat)
+        }
         this.locationPoint = this.endPoint
         this.endLocationText = '目的地'
         try { if (this.map) this.map.panTo(this.endPoint) } catch (e) {}
@@ -122,7 +117,14 @@ export default {
           const t = pickLat; pickLat = pickLng; pickLng = t
           this.$toast && this.$toast('检测到pick点经纬度顺序颠倒，已自动纠正')
         }
-                        this.pickPoint = new window.BMap.Point(pickLng, pickLat)
+        try {
+          const [bdLng, bdLat] = gcj02tobd09(pickLng, pickLat)
+          // 输出转换后的 picklat / picklng（先纬度，后经度）
+          try { console.log('转换后的 picklat / picklng:', bdLat, bdLng) } catch (eLog) {}
+          this.pickPoint = new window.BMap.Point(bdLng, bdLat)
+        } catch (e2) {
+          this.pickPoint = new window.BMap.Point(pickLng, pickLat)
+        }
               } catch (e) {
                 // 静默处理错误
               }
@@ -163,12 +165,22 @@ export default {
           (position) => {
             try { clearTimeout(guardTimer) } catch (e) {}
             if (this.hasPlanned) return
-            const startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-            this.startPoint = startPoint
-            this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-            // 自适应视野
-            try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
-            this.hasPlanned = true
+            // 将浏览器 WGS84 坐标转换为 BD-09
+            this.convertWgs84ToBd09(position.coords.longitude, position.coords.latitude).then((bdPoint) => {
+              if (this.hasPlanned) return
+              this.startPoint = bdPoint
+              this.createAndRunRidingRoute(this.startPoint, this.endPoint)
+              // 自适应视野
+              try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
+              this.hasPlanned = true
+            }).catch(() => {
+              // 兜底：若转换失败则直接使用原始坐标
+              const startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
+              this.startPoint = startPoint
+              this.createAndRunRidingRoute(this.startPoint, this.endPoint)
+              try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
+              this.hasPlanned = true
+            })
           },
           () => {
             try { clearTimeout(guardTimer) } catch (e) {}
@@ -529,6 +541,25 @@ export default {
       return { lng: gcjLng, lat: gcjLat }
     },
 
+    // 将浏览器地理定位(WGS84)转换为百度坐标(BD-09)
+    convertWgs84ToBd09(wgsLng, wgsLat) {
+      return new Promise((resolve) => {
+        try {
+          const gpsPt = new window.BMap.Point(wgsLng, wgsLat)
+          if (window.BMap && window.BMap.Convertor && typeof window.BMap.Convertor.translate === 'function') {
+            // from=1 (GPS/WGS84) -> to=5 (BD09)
+            window.BMap.Convertor.translate(gpsPt, 1, 5, (bdPt) => {
+              resolve(bdPt || gpsPt)
+            })
+          } else {
+            resolve(gpsPt)
+          }
+        } catch (e) {
+          resolve(new window.BMap.Point(wgsLng, wgsLat))
+        }
+      })
+    },
+
     initMap() {
       try {
         // 检查BMap API是否完全加载
@@ -658,10 +689,17 @@ export default {
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const point = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-          this.map.panTo(point)
-          this.locationPoint = point
-          this.startPoint = point
+          // 将浏览器 WGS84 坐标转换为 BD-09 再定位
+          this.convertWgs84ToBd09(position.coords.longitude, position.coords.latitude).then((bdPoint) => {
+            this.map.panTo(bdPoint)
+            this.locationPoint = bdPoint
+            this.startPoint = bdPoint
+          }).catch(() => {
+            const point = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
+            this.map.panTo(point)
+            this.locationPoint = point
+            this.startPoint = point
+          })
 
           // 定位成功，隐藏提示条
           this.showLocationTip = false
