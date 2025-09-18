@@ -153,10 +153,9 @@ export default {
           this.startPoint = fallbackStartPoint
           this.createAndRunRidingRoute(this.startPoint, this.endPoint)
           this.hasPlanned = true
-          this.$toast && this.$toast('已使用写死起点模拟路径规划')
-                      try { } catch (e) {}
+          // this.$toast && this.$toast('已使用写死起点模拟路径规划')
         }
-      }, 1200)
+      }, 10000)
 
       // 获取当前位置作为起点（成功则覆盖写死起点）
       if (navigator.geolocation) {
@@ -170,7 +169,6 @@ export default {
             // 自适应视野
             try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
             this.hasPlanned = true
-            try { } catch (e) {}
           },
           () => {
             try { clearTimeout(guardTimer) } catch (e) {}
@@ -179,7 +177,6 @@ export default {
             this.createAndRunRidingRoute(this.startPoint, this.endPoint)
             try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
             this.hasPlanned = true
-            try { } catch (e) {}
           }
         )
       } else {
@@ -189,7 +186,6 @@ export default {
         this.createAndRunRidingRoute(this.startPoint, this.endPoint)
         try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
         this.hasPlanned = true
-                    try { } catch (e) {}
       }
     },
 
