@@ -24,7 +24,7 @@ import endIcon from '@/assets/end.png'
 import pickIcon from '@/assets/pick.png'
 import tipIcon from '@/assets/tip.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
-import { gcj02tobd09 } from '@/utils/coord'
+import { gcj02tobd09, wgs84togcj02, wgs84tobd09 } from '@/utils/coord'
 
 export default {
   name: 'RoutePlan',
@@ -168,6 +168,15 @@ export default {
             // 将浏览器 WGS84 坐标转换为 BD-09
             this.convertWgs84ToBd09(position.coords.longitude, position.coords.latitude).then((bdPoint) => {
               if (this.hasPlanned) return
+              try {
+                const rawLng = position.coords.longitude
+                const rawLat = position.coords.latitude
+                const [gLng, gLat] = wgs84togcj02(rawLng, rawLat)
+                const [bLng, bLat] = wgs84tobd09(rawLng, rawLat)
+                console.log('定位(WGS84):', rawLat, rawLng)
+                console.log('转换(GCJ02):', gLat, gLng)
+                console.log('转换(BD09):', bLat, bLng)
+              } catch (logErr) {}
               this.startPoint = bdPoint
               this.createAndRunRidingRoute(this.startPoint, this.endPoint)
               // 自适应视野
@@ -235,7 +244,7 @@ export default {
         // 添加起点标签
         const startLabel = new window.BMap.Label('定位点', {
           position: startPoint,
-          offset: new window.BMap.Size(0, -90)
+          offset: new window.BMap.Size(0, -88)
         })
         startLabel.setStyle({
           color: '#333',
@@ -254,7 +263,7 @@ export default {
         // 添加终点标签
         const endLabel = new window.BMap.Label('目的地', {
           position: endPoint,
-          offset: new window.BMap.Size(0, -90)
+          offset: new window.BMap.Size(0, -88)
         })
         endLabel.setStyle({
           color: '#333',
@@ -350,7 +359,7 @@ export default {
       try {
         const label = new window.BMap.Label(text, {
           position: point,
-          offset: new window.BMap.Size(-29, -50)  // 向左移动10px：左偏移30px，上偏移50px
+          offset: new window.BMap.Size(-29, -48)  // 向左移动10px：左偏移30px，向下微调
         })
 
         // 标签样式配置
@@ -552,7 +561,13 @@ export default {
               resolve(bdPt || gpsPt)
             })
           } else {
-            resolve(gpsPt)
+            // 无 Convertor 时，使用纯 JS 工具完成 WGS84 -> BD09
+            try {
+              const [bdLng, bdLat] = wgs84tobd09(wgsLng, wgsLat)
+              resolve(new window.BMap.Point(bdLng, bdLat))
+            } catch (e2) {
+              resolve(gpsPt)
+            }
           }
         } catch (e) {
           resolve(new window.BMap.Point(wgsLng, wgsLat))
@@ -691,6 +706,15 @@ export default {
         (position) => {
           // 将浏览器 WGS84 坐标转换为 BD-09 再定位
           this.convertWgs84ToBd09(position.coords.longitude, position.coords.latitude).then((bdPoint) => {
+            try {
+              const rawLng = position.coords.longitude
+              const rawLat = position.coords.latitude
+              const [gLng, gLat] = wgs84togcj02(rawLng, rawLat)
+              const [bLng, bLat] = wgs84tobd09(rawLng, rawLat)
+              console.log('定位(WGS84):', rawLat, rawLng)
+              console.log('转换(GCJ02):', gLat, gLng)
+              console.log('转换(BD09):', bLat, bLng)
+            } catch (logErr) {}
             this.map.panTo(bdPoint)
             this.locationPoint = bdPoint
             this.startPoint = bdPoint
