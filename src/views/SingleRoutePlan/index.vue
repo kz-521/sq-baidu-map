@@ -24,6 +24,7 @@ import startIcon from '@/assets/start.png'
 import endIcon from '@/assets/end.png'
 import tipIcon from '@/assets/tip.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
+import { gcj02tobd09 } from '@/utils/coord'
 
 export default {
   name: 'SingleRoutePlan',
@@ -73,21 +74,20 @@ export default {
     },
 
 
-    // 从URL读取终点经纬度并纠正常见的经纬度颠倒
+    // 从URL读取终点经纬度（不做经纬度顺序纠正）
     parseDestinationFromUrl() {
       try {
         if (!window.BMap) return
         const q = this.$route && this.$route.query ? this.$route.query : {}
-        let lat = parseFloat(q.lat || q.latitude || q.pathLat)
-        let lng = parseFloat(q.lng || q.longitude || q.pathLng)
+        const lat = parseFloat(q.lat || q.latitude || q.pathLat)
+        const lng = parseFloat(q.lng || q.longitude || q.pathLng)
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
-        const looksSwapped = (lat >= 73 && lat <= 136) && (lng >= 3 && lng <= 54)
-        const outOfRange = (lat < -90 || lat > 90) || (lng < -180 || lng > 180)
-        if (looksSwapped || outOfRange) {
-          const t = lat; lat = lng; lng = t
-          this.$toast && this.$toast('检测到经纬度顺序颠倒，已自动纠正')
+        try {
+          const [bdLng, bdLat] = gcj02tobd09(lng, lat)
+          this.endPoint = new window.BMap.Point(bdLng, bdLat)
+        } catch (e2) {
+          this.endPoint = new window.BMap.Point(lng, lat)
         }
-        this.endPoint = new window.BMap.Point(lng, lat)
         this.locationPoint = this.endPoint
         this.endLocationText = '目的地'
         try { if (this.map) this.map.panTo(this.endPoint) } catch (e) {}
@@ -117,10 +117,7 @@ export default {
       // 解析终点坐标
       if (!this.endPoint) {
         this.parseDestinationFromUrl()
-        if (!this.endPoint) {
-          this.$toast && this.$toast('未提供目的地坐标')
-          return
-        }
+        if (!this.endPoint) return this.$toast && this.$toast('未提供目的地坐标')
       }
 
       // 先将视野移动到终点以便用户有反馈
@@ -137,38 +134,29 @@ export default {
           this.hasPlanned = true
           this.$toast && this.$toast('已使用写死起点模拟路径规划')
         }
-      }, 1200)
+      }, 12000)
 
       // 获取当前位置作为起点（成功则覆盖写死起点）
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            try { clearTimeout(guardTimer) } catch (e) {}
-            if (this.hasPlanned) return
-            const startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-            this.startPoint = startPoint
-            this.createDirectRoute(this.startPoint, this.endPoint)
-            // 自适应视野
-            try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
-            this.hasPlanned = true
-          },
-          () => {
-            try { clearTimeout(guardTimer) } catch (e) {}
-            if (this.hasPlanned) return
-            this.startPoint = fallbackStartPoint
-            this.createDirectRoute(this.startPoint, this.endPoint)
-            try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
-            this.hasPlanned = true
-          }
-        )
-      } else {
+      const geolocation = new window.BMap.Geolocation()
+      const vm = this
+      geolocation.getCurrentPosition(function(r){
         try { clearTimeout(guardTimer) } catch (e) {}
-        if (this.hasPlanned) return
-        this.startPoint = fallbackStartPoint
-        this.createDirectRoute(this.startPoint, this.endPoint)
-        try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
-        this.hasPlanned = true
-      }
+        if (vm.hasPlanned) return
+        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+          // BMap.Geolocation 返回的坐标已经是 BD-09 格式，无需转换
+          vm.startPoint = r.point
+          vm.createDirectRoute(vm.startPoint, vm.endPoint)
+          // 自适应视野
+          try { vm.map.setViewport([vm.startPoint, vm.endPoint]) } catch (e) {}
+          vm.hasPlanned = true
+        } else {
+          // 定位失败，使用写死起点
+          vm.startPoint = fallbackStartPoint
+          vm.createDirectRoute(vm.startPoint, vm.endPoint)
+          try { vm.map.setViewport([vm.startPoint, vm.endPoint]) } catch (e) {}
+          vm.hasPlanned = true
+        }
+      })
     },
 
     // 添加起点和终点标记
@@ -310,7 +298,7 @@ export default {
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'center',
           backgroundColor: 'transparent',
-          padding: '2px 6px 8px 6px',  // 上边距减少，下边距增加，让文字向上移动
+          padding: '4px 6px 6px 6px',  // 上边距增加，下边距减少，让文字向下移动
           whiteSpace: 'nowrap',
           textAlign: 'center',
           verticalAlign: 'middle',
@@ -500,49 +488,35 @@ export default {
       }
     },
     locateToCurrent() {
-      // 点击定位时调用安卓注入方法
       try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
-      if (!navigator.geolocation) {
-        this.$toast && this.$toast.fail('浏览器不支持定位，使用默认位置')
-        const defaultPoint = new window.BMap.Point(120.170700, 30.257069)
-        this.map.panTo(defaultPoint)
-        this.locationPoint = defaultPoint
-        this.startPoint = defaultPoint
+
+      if (!this.map) {
+        this.$toast && this.$toast.fail('地图未初始化')
         return
       }
 
       // 检查定位权限
       this.checkLocationPermission()
 
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const point = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-          this.map.panTo(point)
-          this.locationPoint = point
-          this.startPoint = point
-
+      const geolocation = new window.BMap.Geolocation()
+      const vm = this
+      geolocation.getCurrentPosition(function(r){
+        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+          // BMap.Geolocation 返回的坐标已经是 BD-09 格式，无需转换
+          vm.map.panTo(r.point)
+          vm.locationPoint = r.point
+          vm.startPoint = r.point
           // 定位成功，隐藏提示条
-          this.showLocationTip = false
-        },
-        (error) => {
-          // 无论何种错误，回落到默认中心
+          vm.showLocationTip = false
+        } else {
+          // 定位失败，回落到默认中心
           const defaultPoint = new window.BMap.Point(120.170700, 30.257069)
-          this.map.panTo(defaultPoint)
-          this.locationPoint = defaultPoint
-          this.startPoint = defaultPoint
-
-          // 根据错误类型显示提示
-          if (error.code === 1) {
-            this.showLocationTip = true
-            this.locationPermission = 'denied'
-          } else if (error.code === 2) {
-            this.showLocationTip = true
-            this.locationPermission = 'unavailable'
-          } else {
-            this.$toast && this.$toast.fail('获取当前位置失败，使用默认位置')
-          }
+          vm.map.panTo(defaultPoint)
+          vm.locationPoint = defaultPoint
+          vm.startPoint = defaultPoint
+          vm.showLocationTip = true
         }
-      )
+      })
     },
     // 检查定位权限
     checkLocationPermission() {
