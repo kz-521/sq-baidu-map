@@ -197,5 +197,8 @@ val REGIST_HOT =
 val REGIST_POST_STAGE =
     "https://earn-h5.shengqu99.com/#/BMap/index"
 
+//途径点路径规划
  "https://earn-h5.shengqu99.com/#/RoutePlan/index"
-```
+
+// 单点路径规划
+https://hamster-chat.dns.army/#/SingleRoutePlan/index?lat=30.289222&lng=120.06458&type=1
