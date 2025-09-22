@@ -41,6 +41,12 @@ export const constantRoutes = [
     meta: { title: 'SingleRoutePlan', icon: 'map' }
   },
   {
+    path: '/QuickRoute/index',
+    name: 'QuickRoute',
+    component: () => import('@/views/QuickRoute/index'),
+    meta: { title: 'QuickRoute', icon: 'map' }
+  },
+  {
     path: '/SimpleMap/index',
     name: 'SimpleMap',
     component: () => import('@/views/SimpleMap/index'),

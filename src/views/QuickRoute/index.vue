@@ -27,7 +27,7 @@ import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 import { gcj02tobd09 } from '@/utils/coord'
 
 export default {
-  name: 'SingleRoutePlan',
+  name: 'QuickRoute',
   components: {
     MapLicenseInfo
   },
@@ -74,13 +74,13 @@ export default {
     },
 
 
-    // 从URL读取终点经纬度（不做经纬度顺序纠正）
+    // 从URL读取终点经纬度（仅使用 eLat/eLng；不做经纬度顺序纠正）
     parseDestinationFromUrl() {
       try {
         if (!window.BMap) return
         const q = this.$route && this.$route.query ? this.$route.query : {}
-        const lat = parseFloat(q.lat || q.latitude || q.pathLat)
-        const lng = parseFloat(q.lng || q.longitude || q.pathLng)
+        const lat = parseFloat(q.eLat)
+        const lng = parseFloat(q.eLng)
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
         try {
           const [bdLng, bdLat] = gcj02tobd09(lng, lat)
@@ -91,6 +91,23 @@ export default {
         this.locationPoint = this.endPoint
         this.endLocationText = '目的地'
         try { if (this.map) this.map.panTo(this.endPoint) } catch (e) {}
+      } catch (e) { /* ignore */ }
+    },
+
+    // 从URL读取起点经纬度（参数名：sLat、sLng，按GCJ02传入，需转BD09）
+    parseStartFromUrl() {
+      try {
+        if (!window.BMap) return
+        const q = this.$route && this.$route.query ? this.$route.query : {}
+        const lat = parseFloat(q.sLat)
+        const lng = parseFloat(q.sLng)
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+        try {
+          const [bdLng, bdLat] = gcj02tobd09(lng, lat)
+          this.startPoint = new window.BMap.Point(bdLng, bdLat)
+        } catch (e2) {
+          this.startPoint = new window.BMap.Point(lng, lat)
+        }
       } catch (e) { /* ignore */ }
     },
 
@@ -111,7 +128,7 @@ export default {
     },
 
 
-    // 根据URL中的终点经纬度，使用当前位置作为起点进行路径规划
+    // 使用URL提供的起点(sLat,sLng)到终点(lat,lng)进行路径规划
     startNavigation() {
       if (this.hasPlanned) return
       // 解析终点坐标
@@ -120,43 +137,16 @@ export default {
         if (!this.endPoint) return this.$toast && this.$toast('未提供目的地坐标')
       }
 
-      // 先将视野移动到终点以便用户有反馈
-      try { this.map.centerAndZoom(this.endPoint, 16) } catch (e) {}
+      // 从URL解析起点
+      if (!this.startPoint) {
+        this.parseStartFromUrl()
+        if (!this.startPoint) return this.$toast && this.$toast('未提供起点坐标')
+      }
 
-      // 写死的起点：与默认"我的位置"一致，方便视觉一致
-      const fallbackStartPoint = new window.BMap.Point(120.170700, 30.257069)
-
-      // 超时保护：若定位迟迟无结果，则使用写死起点进行模拟规划
-      const guardTimer = setTimeout(() => {
-        if (!this.hasPlanned) {
-          this.startPoint = fallbackStartPoint
-          this.createDirectRoute(this.startPoint, this.endPoint)
-          this.hasPlanned = true
-          this.$toast && this.$toast('已使用写死起点模拟路径规划')
-        }
-      }, 12000)
-
-      // 获取当前位置作为起点（成功则覆盖写死起点）
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      geolocation.getCurrentPosition(function(r){
-        try { clearTimeout(guardTimer) } catch (e) {}
-        if (vm.hasPlanned) return
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          // BMap.Geolocation 返回的坐标已经是 BD-09 格式，无需转换
-          vm.startPoint = r.point
-          vm.createDirectRoute(vm.startPoint, vm.endPoint)
-          // 自适应视野
-          try { vm.map.setViewport([vm.startPoint, vm.endPoint]) } catch (e) {}
-          vm.hasPlanned = true
-        } else {
-          // 定位失败，使用写死起点
-          vm.startPoint = fallbackStartPoint
-          vm.createDirectRoute(vm.startPoint, vm.endPoint)
-          try { vm.map.setViewport([vm.startPoint, vm.endPoint]) } catch (e) {}
-          vm.hasPlanned = true
-        }
-      })
+      // 规划路线并自适应视野
+      this.createDirectRoute(this.startPoint, this.endPoint)
+      try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
+      this.hasPlanned = true
     },
 
     // 添加起点和终点标记
@@ -603,5 +593,6 @@ export default {
 
 
 </style>
+
 
 
