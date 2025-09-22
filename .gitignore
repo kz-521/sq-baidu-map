@@ -7,6 +7,11 @@ yarn-error.log*
 package-lock.json
 tests/**/coverage/
 
+# Build archives
+dist*.zip
+dist*.tar.gz
+dist*.7z
+
 # Editor directories and files
 .idea
 .vscode
