@@ -202,3 +202,7 @@ val REGIST_POST_STAGE =
 
 // 单点路径规划
 https://hamster-chat.dns.army/#/SingleRoutePlan/index?lat=30.289222&lng=120.06458&type=1
+
+给定两点之间 的单点路径规划
+https://earn-h5.shengqu99.com/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&type=1&sLat=30.280812&sLng=120.001767
+https://hamster-chat.dns.army/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&type=1&sLat=30.280812&sLng=120.001767
