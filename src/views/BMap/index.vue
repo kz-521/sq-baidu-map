@@ -28,7 +28,7 @@
           <div class="location-divider"></div>
           <div class="location-item end-location">
             <div class="location-dot end-dot"></div>
-            <div class="location-text" style="width:86%">{{ endLocationText }}{{ endLocationText }}</div>
+            <div class="location-text" style="width:86%">{{ endLocationText }}</div>
           </div>
           <div class="swap-button" @click="swapLocations">
             <div class="swap-icon">
