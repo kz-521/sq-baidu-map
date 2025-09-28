@@ -135,7 +135,7 @@ export default {
            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
            this.hasPlanned = true
          }
-       }, 8000)
+       }, 5000)
 
       // 获取当前位置作为起点（成功则覆盖写死起点）
       if (navigator.geolocation) {
@@ -157,7 +157,9 @@ export default {
               this.hasPlanned = true
             })
           },
-           () => {
+           (err) => {
+            console.log(err, 'er');
+
              try { clearTimeout(guardTimer) } catch (e) {}
              if (this.hasPlanned) return
              // 获取定位失败，显示提示信息，不进行路径规划
