@@ -129,15 +129,13 @@ export default {
       // 写死的起点：与默认"我的位置"一致，方便视觉一致
       const fallbackStartPoint = new window.BMap.Point(120.170700, 30.257069)
 
-      // 超时保护：若定位迟迟无结果，则使用写死起点进行模拟规划
-      const guardTimer = setTimeout(() => {
-        if (!this.hasPlanned) {
-          this.startPoint = fallbackStartPoint
-          this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-          this.hasPlanned = true
-          // this.$toast && this.$toast('已使用写死起点模拟路径规划')
-        }
-      }, 1000)
+       // 超时保护：若定位迟迟无结果，则显示错误提示，不进行路径规划
+       const guardTimer = setTimeout(() => {
+         if (!this.hasPlanned) {
+           this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+           this.hasPlanned = true
+         }
+       }, 8000)
 
       // 获取当前位置作为起点（成功则覆盖写死起点）
       if (navigator.geolocation) {
@@ -154,35 +152,27 @@ export default {
               try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
               this.hasPlanned = true
             }).catch(() => {
-              // 兜底：若转换失败则直接使用原始坐标
-              const startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-              this.startPoint = startPoint
-              this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-              try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
+              // 兜底：若转换失败则显示错误提示，不进行路径规划
+              this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
               this.hasPlanned = true
             })
           },
-          () => {
-            try { clearTimeout(guardTimer) } catch (e) {}
-            if (this.hasPlanned) return
-            this.startPoint = fallbackStartPoint
-            this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-            try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
-            this.hasPlanned = true
-          }
+           () => {
+             try { clearTimeout(guardTimer) } catch (e) {}
+             if (this.hasPlanned) return
+             // 获取定位失败，显示提示信息，不进行路径规划
+             this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+             this.hasPlanned = true
+           }
         )
       } else {
         try { clearTimeout(guardTimer) } catch (e) {}
         if (this.hasPlanned) return
-        this.startPoint = fallbackStartPoint
-        this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-        try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
+        // 浏览器不支持定位，显示提示信息，不进行路径规划
+        this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
         this.hasPlanned = true
       }
     },
-
-
-
         // 创建自定义起点、终点和pick点图标的辅助函数
     createCustomMarkers() {
       const iconConfig = {
@@ -272,7 +262,7 @@ export default {
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'center',
           backgroundColor: 'transparent',
-          padding: '2px 6px 8px 6px',  // 上边距减少，下边距增加，让文字向上移动
+          padding: '3px 5px 8px 6px',  // 上边距减少，下边距增加，让文字向上移动
           whiteSpace: 'nowrap',
           textAlign: 'center',
           verticalAlign: 'middle',
@@ -630,12 +620,22 @@ export default {
           if (error.code === 1) {
             this.showLocationTip = true
             this.locationPermission = 'denied'
+            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
           } else if (error.code === 2) {
             this.showLocationTip = true
             this.locationPermission = 'unavailable'
+            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+          } else if (error.code === 3) {
+            // 超时错误
+            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
           } else {
-            this.$toast && this.$toast.fail('获取当前位置失败，使用默认位置')
+            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
           }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000, // 10秒超时
+          maximumAge: 60000 // 缓存1分钟
         }
       )
     },
