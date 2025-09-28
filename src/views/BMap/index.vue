@@ -4,7 +4,7 @@
     <div v-if="!isRoutePlanning" class="header">
       <div v-if="!isGoing" class="header-content">
         <div class="left-section">
-          <span class="title">附近骑士站点</span>
+          <span class="title">{{ headerTitle }}</span>
         </div>
         <div class="right-section">
           <img src="@/assets/Frame.png" alt="Frame" class="frame-icon" @click="locateToCurrent">
@@ -96,10 +96,10 @@
       </button>
     </div>
 
-    <!-- 固定定位元素：附近骑士驿站 -->
+    <!-- 固定定位元素：附近站点按钮（根据 isFlah 切换文案） -->
     <div v-if="!isGoing" class="fixed-poi-button" @click="searchNearbyStations">
       <img src="@/assets/Frame (1).png" alt="附近" class="poi-icon">
-      <span class="poi-text">附近骑士驿站</span>
+      <span class="poi-text">{{ poiButtonText }}</span>
     </div>
 
     <!-- 固定定位元素：定位按钮 -->
@@ -133,6 +133,8 @@ export default {
   },
   data() {
     return {
+      // URL 参数控制：isFlash=true/1 时进入闪送模式
+      isFlashMode: false,
       isGoing: false,
       searchText: '',
       map: null,
@@ -155,7 +157,28 @@ export default {
       currentUserMarker: null
     }
   },
+  created() {
+    try {
+      const q = this.$route && this.$route.query ? this.$route.query : {}
+      // 仅当 URL 参数 isFlash=1 时进入闪送模式（严格为 1）
+      this.isFlashMode = q.isFlash == 1
+    } catch (e) { /* ignore */ }
+  },
+  watch: {
+    '$route.query.isFlash'(val) {
+      // 响应路由查询参数变更（避免组件复用时文案不更新）
+      this.isFlashMode = val == 1
+    }
+  },
   computed: {
+    // 头部标题
+    headerTitle() {
+      return this.isFlashMode ? '附近闪送站点' : '附近骑士站点'
+    },
+    // 附近按钮文案
+    poiButtonText() {
+      return this.isFlashMode ? '附近闪送站点' : '附近骑士驿站'
+    },
     // 数值与单位分离：距离
     routeDistanceValue() {
       if (!this.routeDistance) return '--'
