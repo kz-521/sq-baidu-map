@@ -190,7 +190,7 @@ export default {
       const geolocation = new window.BMap.Geolocation()
       const vm = this
       geolocation.getCurrentPosition(function(r){
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+        if ((this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) && r && r.point) {
           const center = vm.map.getCenter()
           const dist = vm.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: r.point.lng, lat: r.point.lat })
           if (!vm.isCenterInitialized) {
@@ -235,7 +235,8 @@ export default {
           console.log('Geolocation silent: callback status =', status, 'SUCCESS =', window.BMAP_STATUS_SUCCESS, 'result =', r)
           vm.pushDebug('Geolocation silent status: ' + status)
         } catch (_) {}
-        // if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+        const ok = (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) && r && r.point
+        if (ok) {
           vm.locationPoint = r.point
           try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
           const center = vm.map.getCenter()
@@ -250,11 +251,11 @@ export default {
           if (cb) cb()
           console.log('静默定位成功')
           vm.pushDebug('静默定位成功')
-        // } else {
-        //   vm.handleSilentLocationFallback(cb)
-        //   console.error('静默定位失败，已回退到默认点2')
-        //   vm.pushDebug('静默定位失败，已回退到默认点2')
-        // }
+        } else {
+          vm.handleSilentLocationFallback(cb)
+          console.warn('静默定位失败，已回退默认位置')
+          vm.pushDebug('静默定位失败，已回退默认位置')
+        }
       },
     (err) => {
         console.log(err,JSON.stringify(err),'静默定位err')
@@ -439,67 +440,7 @@ export default {
       }
     },
 
-    // 封装本地搜索
-    searchNearbyPromise(keyword, center, radius, baseWeight = 1) {
-      return new Promise((resolve) => {
-        try {
-          const localSearch = new window.BMap.LocalSearch(this.map, { pageCapacity: 50 })
 
-          // 任务级别超时兜底，避免卡死在 allSettled
-          const TIMEOUT_MS = 8000
-          let settled = false
-          const finish = (data) => {
-            if (settled) return
-            settled = true
-            clearTimeout(timer)
-            resolve(Array.isArray(data) ? data : [])
-          }
-          const timer = setTimeout(() => {
-            console.warn('LocalSearch timeout:', keyword)
-            this.pushDebug && this.pushDebug('LocalSearch timeout: ' + keyword)
-            finish([])
-          }, TIMEOUT_MS)
-
-          // 日志：任务启动
-          try { console.log('LocalSearch start:', keyword, 'radius:', radius) } catch (_) {}
-          this.pushDebug && this.pushDebug('LocalSearch start: ' + keyword)
-
-          localSearch.setSearchCompleteCallback((result) => {
-            try {
-              const pois = []
-              if (result && result.getCurrentNumPois) {
-                const num = result.getCurrentNumPois()
-                for (let i = 0; i < num; i++) {
-                  const poi = result.getPoi(i)
-                  if (!poi || !poi.point || !poi.point.lng || !poi.point.lat) continue
-
-                  const weight = baseWeight * (poi.numReviews ? Math.min(1 + poi.numReviews / 1000, 2) : 1)
-                  pois.push({
-                    name: poi.title || keyword,
-                    lng: poi.point.lng,
-                    lat: poi.point.lat,
-                    weight
-                  })
-                }
-              }
-              try { console.log('LocalSearch done:', keyword, 'count:', pois.length) } catch (_) {}
-              this.pushDebug && this.pushDebug('LocalSearch done: ' + keyword + ' count:' + pois.length)
-              finish(pois)
-            } catch (e) {
-              console.warn('POI解析失败:', e)
-              this.pushDebug('POI解析失败')
-              finish([])
-            }
-          })
-
-          localSearch.searchNearby(keyword, center, radius)
-        } catch (e) {
-          console.warn('本地搜索失败:', e)
-          this.pushDebug('本地搜索失败')
-          resolve([])
-        }
-      })
-    },
 
     // 用POI集合绘制热力
     renderHeatFromPOIs(center, zoom) {
@@ -688,17 +629,7 @@ export default {
   top: 0; left: 0; right: 0; bottom: 0;
   background: #f5f5f5;
 }
-.header {
-  position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 1000;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(to bottom, #d5daf8 0%, transparent 100%);
-}
-.search-header-content {
-  position: relative; margin-top: 10px; width: 100%; display: flex; justify-content: center; align-items: center;
-}
-.left-icon { position: absolute; left: 12px; width: 24px; height: 24px; display: flex; align-items: center; }
-.frame-icon { width: 20px; height: 23px; }
-.search-adr { font-weight: 600; font-size: 16px; color: #333; }
+
 
 .map-container {
   width: 100%;
@@ -743,23 +674,6 @@ export default {
 .tip-text { font-size: 13px; color: #E22A2A; font-weight: 600; }
 .tip-button { background: #FF4835; color: #fff; border: none; border-radius: 10px; padding: 6px 12px; font-size: 13px; height: 25px; }
 
-/* 调试面板样式 */
-.debug-panel {
-  position: fixed; left: 12px; bottom: 12px; width: 60%; max-width: 520px; max-height: 40vh;
-  background: rgba(0,0,0,0.8); color: #d6f3d6; border-radius: 8px; z-index: 2000;
-  overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-.debug-panel__header {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 10px; font-size: 13px; background: rgba(0,0,0,0.9); color: #fff;
-}
-.debug-panel__actions { display: flex; gap: 6px; }
-.debug-btn { background: #2f7d32; color: #fff; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; }
-.debug-panel__body { padding: 8px 10px; max-height: 32vh; overflow: auto; }
-.debug-log { padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.1); }
-.debug-log__meta { font-size: 11px; color: #9fd49f; margin-bottom: 2px; }
-.debug-log__msg { font-size: 12px; white-space: pre-wrap; word-break: break-word; }
-.debug-log.lv-warn .debug-log__meta { color: #ffd666; }
-.debug-log.lv-error .debug-log__meta { color: #ff7875; }
+
 </style>
 

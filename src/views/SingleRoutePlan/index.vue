@@ -19,7 +19,6 @@
 </template>
 
 <script>
-import loadBMap from '@/utils/loadBMap'
 import startIcon from '@/assets/start.png'
 import endIcon from '@/assets/end.png'
 import tipIcon from '@/assets/tip.png'
@@ -46,18 +45,10 @@ export default {
     }
   },
   async mounted() {
-    try {
-      await loadBMap('JZ7exm3yUlWSewreBHs0celsfohscaod') // 加载引入BMap
-      // 添加少量延迟确保BMap API完全加载
-      setTimeout(() => {
-        this.initMap()
-        // 检查定位权限（仅用于提示条）
-        this.checkLocationPermission()
-      }, 300)
-    } catch (error) {
-      console.error('地图初始化失败:', error)
-      this.$toast && this.$toast.fail('地图加载失败')
-    }
+    setTimeout(() => {
+      this.initMap()
+      this.checkLocationPermission()
+    }, 300)
   },
   methods: {
     // 禁用覆盖物点击后弹出信息
@@ -142,7 +133,7 @@ export default {
       geolocation.getCurrentPosition(function(r){
         try { clearTimeout(guardTimer) } catch (e) {}
         if (vm.hasPlanned) return
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+        if ((this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) && r && r.point) {
           // BMap.Geolocation 返回的坐标已经是 BD-09 格式，无需转换
           vm.startPoint = r.point
           vm.createDirectRoute(vm.startPoint, vm.endPoint)

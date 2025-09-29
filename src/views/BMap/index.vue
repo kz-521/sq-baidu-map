@@ -121,7 +121,6 @@
 </template>
 
 <script>
-import loadBMap from '@/utils/loadBMap'
 import shopIcon from '@/assets/shop.png'
 import userIcon from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
@@ -223,18 +222,11 @@ export default {
     }
   },
   async mounted() {
-    try {
-      await loadBMap('JZ7exm3yUlWSewreBHs0celsfohscaod') // 加载引入BMap
-      // 添加延迟确保BMap API完全加载
-      setTimeout(() => {
-        this.initMap()
-        // 检查定位权限
-        this.checkLocationPermission()
-      }, 1000)
-    } catch (error) {
-      console.error('地图初始化失败:', error)
-      this.$toast && this.$toast.fail('地图加载失败')
-    }
+    // 直接加载脚本后初始化（initMap 内部已做 BMap 就绪重试）
+    setTimeout(() => {
+      this.initMap()
+      this.checkLocationPermission()
+    }, 300)
   },
   methods: {
     // 保留：空方法占位（如未来需要自定义可再实现）

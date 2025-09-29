@@ -18,7 +18,6 @@
 </template>
 
 <script>
-import loadBMap from '@/utils/loadBMap'
 import startIcon from '@/assets/start.png'
 import endIcon from '@/assets/end.png'
 import pickIcon from '@/assets/pick.png'
@@ -44,18 +43,10 @@ export default {
     }
   },
   async mounted() {
-    try {
-      await loadBMap('JZ7exm3yUlWSewreBHs0celsfohscaod') // 加载引入BMap
-      // 添加少量延迟确保BMap API完全加载
-      setTimeout(() => {
-        this.initMap()
-        // 检查定位权限（仅用于提示条）
-        this.checkLocationPermission()
-      }, 300)
-    } catch (error) {
-      console.error('地图初始化失败:', error)
-      this.$toast && this.$toast.fail('地图加载失败')
-    }
+    setTimeout(() => {
+      this.initMap()
+      this.checkLocationPermission()
+    }, 300)
   },
   methods: {
     // 禁用覆盖物点击后弹出信息
@@ -139,34 +130,22 @@ export default {
 
       // 获取当前位置作为起点（成功则覆盖写死起点）
       if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            try { clearTimeout(guardTimer) } catch (e) {}
-            if (this.hasPlanned) return
-            // 将浏览器 WGS84 坐标转换为 BD-09
-            this.convertWgs84ToBd09(position.coords.longitude, position.coords.latitude).then((bdPoint) => {
-              if (this.hasPlanned) return
-              this.startPoint = bdPoint
-              this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-              // 自适应视野
-              try { this.map.setViewport([this.startPoint, this.endPoint]) } catch (e) {}
-              this.hasPlanned = true
-            }).catch(() => {
-              // 兜底：若转换失败则显示错误提示，不进行路径规划
-              this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
-              this.hasPlanned = true
-            })
-          },
-           (err) => {
-            console.log(err, 'er');
-
-             try { clearTimeout(guardTimer) } catch (e) {}
-             if (this.hasPlanned) return
-             // 获取定位失败，显示提示信息，不进行路径规划
-             this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
-             this.hasPlanned = true
-           }
-        )
+        const geolocation = new window.BMap.Geolocation()
+        const vm = this
+        geolocation.getCurrentPosition(function(r){
+          try { clearTimeout(guardTimer) } catch (e) {}
+          if (vm.hasPlanned) return
+          const ok = (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) && r && r.point
+          if (ok) {
+            vm.startPoint = r.point
+            vm.createAndRunRidingRoute(vm.startPoint, vm.endPoint)
+            try { vm.map.setViewport([vm.startPoint, vm.endPoint]) } catch (e) {}
+            vm.hasPlanned = true
+          } else {
+            vm.$toast && vm.$toast.fail('获取定位失败,请稍后再试')
+            vm.hasPlanned = true
+          }
+        })
       } else {
         try { clearTimeout(guardTimer) } catch (e) {}
         if (this.hasPlanned) return
