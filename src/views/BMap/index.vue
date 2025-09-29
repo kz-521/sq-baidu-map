@@ -177,7 +177,7 @@ export default {
     },
     // 附近按钮文案
     poiButtonText() {
-      return this.isFlashMode ? '附近闪送站点' : '附近骑士驿站'
+      return this.isFlashMode ? '附近闪送驿站' : '附近骑士驿站'
     },
     // 数值与单位分离：距离
     routeDistanceValue() {

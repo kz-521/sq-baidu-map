@@ -192,6 +192,7 @@ https://earn-h5.shengqu99.com/#/RoutePlan/index?lat=30.361424&lng=120.054475&pic
 //热力图
 val REGIST_HOT =
     "https://earn-h5.shengqu99.com/#/HeatMap/index"
+    https://hamster-chat.dns.army/#/HeatMap/index
 
 //驿站
 val REGIST_POST_STAGE =
@@ -206,3 +207,6 @@ https://hamster-chat.dns.army/#/SingleRoutePlan/index?lat=30.289222&lng=120.0645
 给定两点之间 的单点路径规划
 https://earn-h5.shengqu99.com/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&type=1&sLat=30.280812&sLng=120.001767
 https://hamster-chat.dns.army/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&type=1&sLat=30.280812&sLng=120.001767
+
+骑士驿站 https://earn-h5.shengqu99.com/#/BMap/index
+闪送 https://earn-h5.shengqu99.com/#/BMap/index?isFlash=1

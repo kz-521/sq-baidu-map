@@ -22,7 +22,9 @@ Vue.prototype.$toast = Toast
 // 全局挂载 axios
 Vue.prototype.$http = axios
 
-// 移除 vConsole 初始化
+// vConsole 移动端调试工具 - 仅在开发环境启用
+  // const VConsole = require('vconsole')
+  // new VConsole()
 
 Vue.config.productionTip = false
 
