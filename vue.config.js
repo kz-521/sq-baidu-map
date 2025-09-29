@@ -32,6 +32,8 @@ module.exports = {
   },
   // 配置HTML插件选项
   chainWebpack: config => {
+    // 入口前置 babel-polyfill（等效在 webpack entry 中添加）
+    try { config.entry('app').prepend('babel-polyfill') } catch (e) {}
     config
       .plugin('html')
       .tap(args => {

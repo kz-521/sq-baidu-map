@@ -1,3 +1,7 @@
+import 'babel-polyfill'
+import Es6Promise from 'es6-promise'
+require('es6-promise').polyfill()
+Es6Promise.polyfill()
 import Vue from 'vue'
 import axios from 'axios'
 
@@ -15,6 +19,7 @@ import '@/styles/index.scss' // global css
 
 import App from './App'
 import router from './router'
+import BaiduMap from 'vue-baidu-map'
 
 // 全局挂载 Vant Toast
 Vue.prototype.$toast = Toast
@@ -25,6 +30,11 @@ Vue.prototype.$http = axios
 // vConsole 移动端调试工具 - 仅在开发环境启用
   // const VConsole = require('vconsole')
   // new VConsole()
+
+// 注册 vue-baidu-map 插件（使用你的 AK）
+Vue.use(BaiduMap, {
+  ak: 'JZ7exm3yUlWSewreBHs0celsfohscaod'
+})
 
 Vue.config.productionTip = false
 
