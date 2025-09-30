@@ -24,9 +24,6 @@ import BaiduMap from 'vue-baidu-map'
 // 全局挂载 Vant Toast
 Vue.prototype.$toast = Toast
 
-// 全局挂载 axios
-Vue.prototype.$http = axios
-
 // vConsole 移动端调试工具 - 仅在开发环境启用
   // const VConsole = require('vconsole')
   // new VConsole()

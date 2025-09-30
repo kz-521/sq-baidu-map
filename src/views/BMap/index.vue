@@ -167,10 +167,10 @@ export default {
   },
   created() {
     try {
-      const q = this.$route && this.$route.query ? this.$route.query : {}
+      const q = this.$route.query
       // 仅当 URL 参数 isFlash=1 时进入闪送模式（严格为 1）
       this.isFlashMode = q.isFlash == 1
-    } catch (e) { /* ignore */ }
+    } catch (e) {}
   },
   watch: {
     '$route.query.isFlash'(val) {
