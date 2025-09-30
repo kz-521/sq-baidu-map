@@ -60,8 +60,14 @@
       <div class="search-adr"></div>
     </div>
 
-    <!-- 地图容器 -->
-    <div id="map-container" class="map-container" />
+    <!-- 地图容器（使用 vue-baidu-map 组件） -->
+    <baidu-map
+      class="map-container"
+      :center="mapCenter"
+      :zoom="defaultZoom"
+      :scroll-wheel-zoom="true"
+      @ready="onMapReady"
+    />
 
     <!-- 审图号信息 -->
     <MapLicenseInfo />
@@ -153,7 +159,10 @@ export default {
       // 站点标记集合：用于搜索前清理
       stationMarkers: [],
       // 当前用户定位标记
-      currentUserMarker: null
+      currentUserMarker: null,
+      // 地图配置
+      mapCenter: { lng: 116.391, lat: 39.906217 },
+      defaultZoom: 18
     }
   },
   created() {
@@ -222,13 +231,123 @@ export default {
     }
   },
   async mounted() {
-    // 直接加载脚本后初始化（initMap 内部已做 BMap 就绪重试）
-    setTimeout(() => {
-      this.initMap()
-      this.checkLocationPermission()
-    }, 300)
+    // 检查定位权限
+    this.checkLocationPermission()
   },
   methods: {
+    // 地图组件就绪回调
+    onMapReady({ BMap, map }) {
+      try {
+        if (!window.BMap) { window.BMap = BMap }
+        this.map = map
+
+        // 设置地图中心点
+        const point = new window.BMap.Point(this.mapCenter.lng, this.mapCenter.lat)
+        this.map.centerAndZoom(point, this.defaultZoom)
+
+        // 应用地图样式（已注释，保持默认样式）
+        // this.applyMapStyle()
+
+        // 启用各种缩放功能
+        this.map.enableScrollWheelZoom(true)
+        this.map.enableDoubleClickZoom(false)
+        this.map.enablePinchToZoom(false)
+
+        // 获取当前位置（但不显示location-card）
+        this.getCurrentLocationSilently()
+        // 地图交互时不弹起输入
+        this.bindMapInteractionGuards()
+        this.initAutocomplete()
+        // 初次渲染后同步一次联想下拉的宽度与位置
+        this.$nextTick(() => this.updateSuggestionStyle())
+        // 窗口尺寸变化时也同步
+        window.addEventListener('resize', this.updateSuggestionStyle)
+        const inputEl = document.getElementById('searchInput')
+        if (inputEl) {
+          inputEl.addEventListener('focus', this.updateSuggestionStyle)
+          inputEl.addEventListener('input', this.updateSuggestionStyle)
+        }
+      } catch (error) {
+        console.error('地图初始化失败:', error)
+        this.$toast && this.$toast.fail('地图初始化失败')
+      }
+    },
+
+    // 应用地图样式（已注释，保持默认样式）
+    /*
+    applyMapStyle() {
+      const mapStyle = [{
+        'featureType': 'background',
+        'elementType': 'geometry',
+        'stylers': {
+          'color': '#e6e8ebff'
+        }
+      }, {
+        'featureType': 'green',
+        'elementType': 'geometry',
+        'stylers': {
+          'color': '#b2e2bfff'
+        }
+      }, {
+        'featureType': 'highrailway',
+        'elementType': 'geometry',
+        'stylers': {
+          'visibility': 'off'
+        }
+      }, {
+        'featureType': 'railway',
+        'elementType': 'geometry',
+        'stylers': {
+          'visibility': 'off'
+        }
+      }, {
+        'featureType': 'vacationway',
+        'elementType': 'geometry',
+        'stylers': {
+          'visibility': 'off'
+        }
+      }, {
+        'featureType': 'highwaysign',
+        'elementType': 'labels',
+        'stylers': {
+          'visibility': 'off'
+        }
+      }, {
+        'featureType': 'highwaysign',
+        'elementType': 'labels.icon',
+        'stylers': {
+          'visibility': 'off'
+        }
+      }, {
+        'featureType': 'nationalwaysign',
+        'elementType': 'labels',
+        'stylers': {
+          'visibility': 'off'
+        }
+      }, {
+        'featureType': 'provincialwaysign',
+        'elementType': 'labels',
+        'stylers': {
+          'visibility': 'off'
+        }
+      }, {
+        'featureType': 'provincialwaysign',
+        'elementType': 'labels.icon',
+        'stylers': {
+          'visibility': 'off'
+        }
+      }]
+
+      try {
+        this.map.setMapStyleV2({
+          styleJson: mapStyle
+        })
+        console.log('地图样式已应用，使用自定义样式 V2')
+      } catch (styleError) {
+        console.error('样式应用失败:', styleError)
+      }
+    },
+    */
     // 保留：空方法占位（如未来需要自定义可再实现）
     drawRouteFromResult() {},
     createArrowMarker() {},
@@ -828,137 +947,6 @@ export default {
       }, 500)
 
       this.$toast && this.$toast('正在尝试打开导航应用...')
-    },
-    initMap() {
-      try {
-        // 检查BMap API是否完全加载
-        if (!window.BMap || !window.BMap.Map) {
-          console.error('BMap API 未完全加载')
-          setTimeout(() => {
-            this.initMap()
-          }, 500)
-          return
-        }
-
-        // 创建地图实例
-        this.map = new window.BMap.Map('map-container', {
-          enableMapClick: false,
-          displayOptions: {
-            building: false
-          }
-        })
-
-        // 设置地图中心点（默认杭州市余杭区EFC中心）
-        const point = new window.BMap.Point(116.391, 39.906217)
-        this.map.centerAndZoom(point, 18)
-
-        // 应用地图样式
-        const mapStyle = [{
-          'featureType': 'background',
-          'elementType': 'geometry',
-          'stylers': {
-            'color': '#e6e8ebff'
-          }
-        }, {
-          'featureType': 'green',
-          'elementType': 'geometry',
-          'stylers': {
-            'color': '#b2e2bfff'
-          }
-        }, {
-          'featureType': 'highrailway',
-          'elementType': 'geometry',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'railway',
-          'elementType': 'geometry',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'vacationway',
-          'elementType': 'geometry',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'highwaysign',
-          'elementType': 'labels',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'highwaysign',
-          'elementType': 'labels.icon',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'nationalwaysign',
-          'elementType': 'labels.icon',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'nationalwaysign',
-          'elementType': 'labels',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'provincialwaysign',
-          'elementType': 'labels',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'provincialwaysign',
-          'elementType': 'labels.icon',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }]
-
-        try {
-          this.map.setMapStyleV2({
-            styleJson: mapStyle
-          })
-          console.log('地图样式已应用，使用自定义样式 V2')
-        } catch (styleError) {
-          console.error('样式应用失败:', styleError)
-        }
-
-        // 启用各种缩放功能
-        this.map.enableScrollWheelZoom(true) // 滚轮缩放
-        this.map.enableDoubleClickZoom(false) // 禁用双击缩放
-        this.map.enablePinchToZoom(false) // 禁用移动端双指缩放
-
-        // 检查缩放功能是否启用
-        console.log('缩放功能状态:')
-        console.log('- 地图缩放级别:', this.map.getZoom())
-        console.log('- 地图中心点:', this.map.getCenter())
-        console.log('- 地图实例:', this.map)
-
-        // 获取当前位置（但不显示location-card）
-        this.getCurrentLocationSilently()
-        // 地图交互时不弹起输入
-        this.bindMapInteractionGuards()
-        this.initAutocomplete()
-        // 初次渲染后同步一次联想下拉的宽度与位置
-        this.$nextTick(() => this.updateSuggestionStyle())
-        // 窗口尺寸变化时也同步
-        window.addEventListener('resize', this.updateSuggestionStyle)
-        const inputEl = document.getElementById('searchInput')
-        if (inputEl) {
-          inputEl.addEventListener('focus', this.updateSuggestionStyle)
-          inputEl.addEventListener('input', this.updateSuggestionStyle)
-        }
-      } catch (error) {
-        console.error('地图初始化失败:', error)
-        this.$toast && this.$toast.fail('地图初始化失败')
-      }
     },
     locateToCurrent() {
       // 点击定位时调用安卓注入方法
