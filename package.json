@@ -1,19 +1,13 @@
 {
-  "name": "knight-assistant",
-  "version": "0.0.4",
+  "name": "sq-map",
+  "version": "0.0.5",
   "description": "路径规划",
-  "author": "",
-  "license": "MIT",
   "scripts": {
     "dev": "vue-cli-service serve",
     "start": "npm run dev",
     "build:prod": "vue-cli-service build",
     "build:stage": "vue-cli-service build --mode staging",
     "preview": "node build/index.js --preview",
-    "lint": "vue-cli-service lint",
-    "test:unit": "jest --clearCache && vue-cli-service test:unit",
-    "test:ci": "npm run lint && npm run test:unit",
-    "svgo": "svgo -f src/icons/svg --config=src/icons/svgo.yml",
     "server": "cd server && npm start",
     "server:dev": "cd server && npm run dev",
     "server:install": "cd server && npm install"

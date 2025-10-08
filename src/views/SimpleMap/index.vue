@@ -1,21 +1,21 @@
 <template>
   <div class="mobile-container">
-
-    <!-- 地图容器 -->
-    <div id="heatmap-container" class="map-container" />
-
-    <!-- 固定定位元素：定位按钮 -->
-    <!-- <div class="fixed-locate-button" @click="locateToCurrent">
-      <img src="@/assets/position.png" alt="定位" class="loc-icon">
-    </div> -->
+    <!-- 地图容器（使用 vue-baidu-map 组件） -->
+    <baidu-map
+      class="map-container"
+      :center="mapCenter"
+      :zoom="defaultZoom"
+      :scroll-wheel-zoom="true"
+      @ready="onMapReady"
+    />
 
     <!-- 缩放控制元素 -->
     <div class="custom-element">
-      <div class="zoom-btn zoom-in" @click="zoomIn">
+      <div class="zoom-btn zoom-in" @click="zoomIn(1)">
         <i class="el-icon-plus"></i>
       </div>
       <div class="separator"></div>
-      <div class="zoom-btn zoom-out" @click="zoomOut">
+      <div class="zoom-btn zoom-out" @click="zoomIn(-1)">
         <i class="el-icon-minus"></i>
       </div>
     </div>
@@ -24,135 +24,60 @@
     <MapLicenseInfo />
 
     <!-- 定位提示条 -->
-    <div v-if="showLocationTip" class="location-tip-bar">
-      <div class="tip-content">
-        <div class="tip-icon">!</div>
-        <div class="tip-text">未能获取到您的位置信息，去手动开启</div>
-      </div>
-      <button class="tip-button" @click="enableLocation">开启</button>
-    </div>
+    <LocationTipBar :visible="showLocationTip" @enable="enableLocation" />
   </div>
 </template>
 
 <script>
 
-import loadBMap from '@/utils/loadBMap'
 import userIconImg from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
+import LocationTipBar from '@/components/LocationTipBar.vue'
 
 // 常量配置
 const MAP_CONFIG = {
   DEFAULT_CENTER: { lng: 116.391, lat: 39.906217 },
   DEFAULT_ZOOM: 15,
   LOCATION_ZOOM: 16,
-  SEARCH_RADIUS: 5000,
-  MAX_POI_COUNT: 60
 }
-
-const MAP_STYLE = [
-  { featureType: 'background', elementType: 'geometry', stylers: { color: '#f5f5f5' } },
-  { featureType: 'water', elementType: 'geometry', stylers: { color: '#e3f2fd' } },
-  { featureType: 'landscape', elementType: 'geometry', stylers: { color: '#f5f5f5' } }
-]
 
 export default {
   name: 'HeatMap',
-  components: { MapLicenseInfo },
+  components: { MapLicenseInfo, LocationTipBar },
   data() {
     return {
       map: null,
-      mapLoaded: false,
       showLocationTip: false,
       locationPermission: 'prompt',
       locationPoint: null,
-      heatOverlays: [],
-      heatPOIs: [],
+      // baidu-map 初始配置
+      mapCenter: { lng: MAP_CONFIG.DEFAULT_CENTER.lng, lat: MAP_CONFIG.DEFAULT_CENTER.lat },
+      defaultZoom: MAP_CONFIG.DEFAULT_ZOOM,
       currentMarker: null,
       // 用户移动方向相关
-      lastLocation: null,
       userHeading: 0, // 用户朝向角度（0-360度）
       locationHistory: [], // 位置历史，用于计算方向
       maxHistoryLength: 5, // 最大历史记录数
       // 防抖相关
       isLocating: false, // 防止重复定位
-      // 首次热力图初始化标记，防止移动触发重复初始化
-      hasInitializedHeatmap: false
     }
   },
   async mounted() {
-    try {
-      console.log('开始加载百度地图...')
-      await loadBMap('JZ7exm3yUlWSewreBHs0celsfohscaod')
-      console.log('百度地图加载成功')
-      setTimeout(() => {
-        this.initMap()
-        this.checkLocationPermission()
-      }, 500)
-    } catch (e) {
-      console.error('热力图初始化失败:', e)
-      console.error('错误详情:', e.message, e.stack)
-      this.$message && this.$message.error('热力图加载失败: ' + e.message)
-    }
+    this.checkLocationPermission()
   },
   methods: {
-    // 地图初始化
-    initMap() {
-      if (!window.BMap || !window.BMap.Map) {
-        console.error('BMap not available')
-        return
-      }
-
+    // 地图就绪回调：应用样式并进行必要初始化
+    onMapReady({ BMap, map }) {
       try {
-        this.map = new window.BMap.Map('heatmap-container', {
-          enableMapClick: false,
-          displayOptions: { building: false },
-          enableScrollWheelZoom: true,
-          enableDoubleClickZoom: true,
-          enableKeyboard: false
-        })
-
-        const center = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
-        this.map.centerAndZoom(center, MAP_CONFIG.DEFAULT_ZOOM)
-
-        // 应用地图样式
-        this.applyMapStyle()
-
-        // 等待地图完全加载完成
-        this.setupMapEventListeners()
-
+        if (!window.BMap) window.BMap = BMap
+        this.map = map
+        try { this.map.enableScrollWheelZoom(true) } catch (e) {}
       } catch (error) {
-        console.error('Failed to initialize map:', error)
+        console.error('地图初始化失败:', error)
       }
     },
 
-    // 应用地图样式
-    applyMapStyle() {
-      try {
-        this.map.setMapStyleV2({ styleJson: MAP_STYLE })
-      } catch (e) {
-        console.warn('Failed to apply map style:', e)
-      }
-    },
-
-    // 设置地图事件监听器
-    setupMapEventListeners() {
-      const onTilesLoaded = () => {
-        if (this.hasInitializedHeatmap) return
-        this.hasInitializedHeatmap = true
-        this.map.removeEventListener('tilesloaded', onTilesLoaded)
-        console.log('Map tiles loaded (first time)')
-        this.mapLoaded = true
-        this.initializeHeatmap()
-      }
-      this.map.addEventListener('tilesloaded', onTilesLoaded)
-    },
-
-    // 初始化热力图
-    initializeHeatmap() {
-      // 尝试主动定位（不阻塞后续渲染流程）
-      try { this.locateToCurrent() } catch (e) {}
-      this.getCurrentLocationSilently(() => {})
-    },
+    // 如需在首帧后再做初始化，可在外部按需添加 tilesloaded 监听
     // 定位到当前位置：仅回到当前位置，不加图标
     locateToCurrent() {
       if (this.isLocating) return // 防抖处理
@@ -170,13 +95,10 @@ export default {
       geolocation.getCurrentPosition(function(r){
         if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
           vm.map.panTo(r.point)
-          // alert('您的位置：' + r.point.lng + ',' + r.point.lat)
-
           vm.locationPoint = r.point
           vm.updateCurrentMarker(r.point)
           vm.showLocationTip = false
         } else {
-          // alert('failed' + (this.getStatus ? this.getStatus() : ''))
           vm.handleLocationFallback()
           vm.showLocationTip = true
         }
@@ -190,56 +112,6 @@ export default {
       this.locationPoint = defaultPoint
       if (this.map) this.map.panTo(defaultPoint)
       this.updateCurrentMarker(defaultPoint)
-    },
-
-    // 静默定位后回调
-    getCurrentLocationSilently(cb) {
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      geolocation.getCurrentPosition(function(r){
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          vm.locationPoint = r.point
-          if (!vm.mapLoaded) {
-            vm.map.centerAndZoom(r.point, MAP_CONFIG.LOCATION_ZOOM)
-          }
-          vm.updateCurrentMarker(r.point)
-          if (cb) cb()
-        } else {
-          vm.handleSilentLocationFallback(cb)
-        }
-      })
-    },
-
-    // 静默定位成功处理
-    handleSilentLocationSuccess(pos, cb) {
-      const point = new window.BMap.Point(pos.coords.longitude, pos.coords.latitude)
-      this.locationPoint = point
-
-      // 只在第一次初始化时设置地图中心，避免后续定位时重置
-      if (!this.mapLoaded) {
-        this.map.centerAndZoom(point, MAP_CONFIG.LOCATION_ZOOM)
-      }
-
-      this.updateCurrentMarker(point)
-      if (cb) cb()
-    },
-
-    // 静默定位失败处理
-    handleSilentLocationError(cb) {
-      this.handleSilentLocationFallback(cb)
-    },
-
-    // 静默定位失败时的默认处理
-    handleSilentLocationFallback(cb) {
-      const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
-      this.locationPoint = defaultPoint
-
-      if (!this.mapLoaded) {
-        this.map.centerAndZoom(defaultPoint, MAP_CONFIG.DEFAULT_ZOOM)
-      }
-
-      this.updateCurrentMarker(defaultPoint)
-      if (cb) cb()
     },
 
     // 检查定位权限
@@ -274,63 +146,6 @@ export default {
         return false
       }
     },
-
-    // 封装本地搜索
-    searchNearbyPromise(keyword, center, radius, baseWeight = 1) {
-      return new Promise((resolve) => {
-        try {
-          const localSearch = new window.BMap.LocalSearch(this.map, { pageCapacity: 50 })
-
-          localSearch.setSearchCompleteCallback((result) => {
-            try {
-              const pois = []
-              if (result && result.getCurrentNumPois) {
-                const num = result.getCurrentNumPois()
-                for (let i = 0; i < num; i++) {
-                  const poi = result.getPoi(i)
-                  if (!poi || !poi.point || !poi.point.lng || !poi.point.lat) continue
-
-                  const weight = baseWeight * (poi.numReviews ? Math.min(1 + poi.numReviews / 1000, 2) : 1)
-                  pois.push({
-                    name: poi.title || keyword,
-                    lng: poi.point.lng,
-                    lat: poi.point.lat,
-                    weight
-                  })
-                }
-              }
-              resolve(pois)
-            } catch (e) {
-              console.warn('POI解析失败:', e)
-              resolve([])
-            }
-          })
-
-          localSearch.searchNearby(keyword, center, radius)
-        } catch (e) {
-          console.warn('本地搜索失败:', e)
-          resolve([])
-        }
-      })
-    },
-
-    // 根据缩放级别获取基础半径（恢复较大尺寸）
-    getBaseRadiusByZoom(zoom) {
-      if (zoom >= 18) return 120
-      if (zoom >= 16) return 180
-      return 240
-    },
-
-    // 创建热力圆
-    createHeatCircle(center, radius, color, opacity) {
-      return new window.BMap.Circle(center, radius, {
-        strokeColor: 'transparent',
-        strokeWeight: 0,
-        fillColor: `rgba(${color}, ${opacity})`,
-        fillOpacity: opacity
-      })
-    },
-
     // 更新/创建当前用户位置图标
     updateCurrentMarker(point) {
       try {
@@ -404,24 +219,14 @@ export default {
       }
     },
 
-    // 放大功能
-    zoomIn() {
-      if (this.map) {
-        const currentZoom = this.map.getZoom()
-        const newZoom = Math.min(currentZoom + 1, 19) // 最大缩放级别为19
-        this.map.setZoom(newZoom)
-        console.log('地图放大到级别:', newZoom)
-      }
-    },
-
-    // 缩小功能
-    zoomOut() {
-      if (this.map) {
-        const currentZoom = this.map.getZoom()
-        const newZoom = Math.max(currentZoom - 1, 3) // 最小缩放级别为3
-        this.map.setZoom(newZoom)
-        console.log('地图缩小到级别:', newZoom)
-      }
+    // 缩放功能（delta=+1 放大；-1 缩小）
+    zoomIn(delta) {
+      if (!this.map || (delta !== 1 && delta !== -1)) return
+      const currentZoom = this.map.getZoom()
+      const target = delta === 1
+        ? Math.min(currentZoom + 1, 19) // 最大级别
+        : Math.max(currentZoom - 1, 3)  // 最小级别
+      if (target !== currentZoom) this.map.setZoom(target)
     }
 
   }
@@ -447,74 +252,6 @@ export default {
   bottom: 0;
   z-index: 10;
 }
-
-/* 定位按钮：右5vw，下13.375vh */
-.fixed-locate-button {
-  position: fixed;
-  right: 5vw; /* 距离右侧18px (18/360) */
-  bottom: 13.375vh; /* 距离下方107px (107/800) */
-  width: 13.61vw; /* 49px (49/360) */
-  height: 6.375vh; /* 51px (51/800) */
-  background: #fff;
-  border-radius: 2.78vw; /* 10px (10/360) */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0.56vw 2.22vw rgba(0,0,0,0.1); /* 0 2px 8px */
-  z-index: 1000;
-}
-.fixed-locate-button .loc-icon {
-  width: 6.39vw; /* 23px (23/360) */
-  height: 2.875vh; /* 23px (23/800) */
-}
-
-/* 定位提示条 */
-.location-tip-bar {
-  position: fixed;
-  bottom: 8.125vh; /* 65px (65/800) */
-  left: 0;
-  width: 100%;
-  height: 4.625vh; /* 37px (37/800) */
-  background: #FFE2E0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4.44vw; /* 16px (16/360) */
-  z-index: 1001;
-  box-sizing: border-box;
-}
-.tip-content {
-  display: flex;
-  align-items: center;
-  gap: 2.22vw; /* 8px (8/360) */
-}
-.tip-icon {
-  width: 4.44vw; /* 16px (16/360) */
-  height: 2vh; /* 16px (16/800) */
-  background: #FF4D4F;
-  border-radius: 50%;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 3.33vw; /* 12px (12/360) */
-  font-weight: bold;
-}
-.tip-text {
-  font-size: 3.61vw; /* 13px (13/360) */
-  color: #E22A2A;
-  font-weight: 600;
-}
-.tip-button {
-  background: #FF4835;
-  color: #fff;
-  border: none;
-  border-radius: 2.78vw; /* 10px (10/360) */
-  padding: 1.67vw 3.33vw; /* 6px 12px (6/360, 12/360) */
-  font-size: 3.61vw; /* 13px (13/360) */
-  height: 3.125vh; /* 25px (25/800) */
-}
-
 /* 缩放控制元素样式 */
 .custom-element {
   position: fixed;
@@ -545,17 +282,6 @@ export default {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-
-// .custom-element .zoom-btn:hover {
-//   background-color: #f0f9ff;
-//   border-color: #66b1ff;
-// }
-
-// .custom-element .zoom-btn:active {
-//   background-color: #e6f7ff;
-//   transform: scale(0.95);
-// }
-
 .custom-element .zoom-btn i {
   font-size: 16px;
   color: #409EFF;

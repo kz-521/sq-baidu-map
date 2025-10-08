@@ -30,13 +30,7 @@
     <MapLicenseInfo />
 
     <!-- 定位提示条 -->
-    <div v-if="showLocationTip" class="location-tip-bar">
-      <div class="tip-content">
-        <div class="tip-icon">!</div>
-        <div class="tip-text">未能获取到您的位置信息，去手动开启</div>
-      </div>
-      <button class="tip-button" @click="enableLocation">开启</button>
-    </div>
+    <LocationTipBar :visible="showLocationTip" @enable="enableLocation" />
 
 
   </div>
@@ -46,6 +40,7 @@
 
 import userIconImg from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
+import LocationTipBar from '@/components/LocationTipBar.vue'
 
 // 常量配置
 const MAP_CONFIG = {
@@ -76,7 +71,7 @@ const LOC_STORAGE_KEY = 'heatmap_last_location'
 
 export default {
   name: 'HeatMap',
-  components: { MapLicenseInfo },
+  components: { MapLicenseInfo, LocationTipBar },
   data() {
     return {
       map: null,
@@ -418,63 +413,6 @@ export default {
       }
     },
 
-    // 封装本地搜索
-    searchNearbyPromise(keyword, center, radius, baseWeight = 1) {
-      return new Promise((resolve) => {
-        try {
-          const localSearch = new window.BMap.LocalSearch(this.map, { pageCapacity: 50 })
-
-          // 任务级别超时兜底，避免卡死在 allSettled
-          const TIMEOUT_MS = 8000
-          let settled = false
-          const finish = (data) => {
-            if (settled) return
-            settled = true
-            clearTimeout(timer)
-            resolve(Array.isArray(data) ? data : [])
-          }
-          const timer = setTimeout(() => {
-            console.warn('LocalSearch timeout:', keyword)
-            finish([])
-          }, TIMEOUT_MS)
-
-          // 日志：任务启动
-          try { console.log('LocalSearch start:', keyword, 'radius:', radius) } catch (_) {}
-
-          localSearch.setSearchCompleteCallback((result) => {
-            try {
-              const pois = []
-              if (result && result.getCurrentNumPois) {
-                const num = result.getCurrentNumPois()
-                for (let i = 0; i < num; i++) {
-                  const poi = result.getPoi(i)
-                  if (!poi || !poi.point || !poi.point.lng || !poi.point.lat) continue
-
-                  const weight = baseWeight * (poi.numReviews ? Math.min(1 + poi.numReviews / 1000, 2) : 1)
-                  pois.push({
-                    name: poi.title || keyword,
-                    lng: poi.point.lng,
-                    lat: poi.point.lat,
-                    weight
-                  })
-                }
-              }
-              try { console.log('LocalSearch done:', keyword, 'count:', pois.length) } catch (_) {}
-              finish(pois)
-            } catch (e) {
-              console.warn('POI解析失败:', e)
-              finish([])
-            }
-          })
-
-          localSearch.searchNearby(keyword, center, radius)
-        } catch (e) {
-          console.warn('本地搜索失败:', e)
-          resolve([])
-        }
-      })
-    },
-
     // 用POI集合绘制热力
     renderHeatFromPOIs(center, zoom) {
       if (!this.mapLoaded || !this.heatPOIs || this.heatPOIs.length === 0) return
@@ -654,18 +592,6 @@ export default {
   top: 0; left: 0; right: 0; bottom: 0;
   background: #f5f5f5;
 }
-.header {
-  position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 1000;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(to bottom, #d5daf8 0%, transparent 100%);
-}
-.search-header-content {
-  position: relative; margin-top: 10px; width: 100%; display: flex; justify-content: center; align-items: center;
-}
-.left-icon { position: absolute; left: 12px; width: 24px; height: 24px; display: flex; align-items: center; }
-.frame-icon { width: 20px; height: 23px; }
-.search-adr { font-weight: 600; font-size: 16px; color: #333; }
-
 .map-container {
   width: 100%;
   height: 100vh;
@@ -708,24 +634,5 @@ export default {
 .tip-icon { width: 16px; height: 16px; background: #FF4D4F; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
 .tip-text { font-size: 13px; color: #E22A2A; font-weight: 600; }
 .tip-button { background: #FF4835; color: #fff; border: none; border-radius: 10px; padding: 6px 12px; font-size: 13px; height: 25px; }
-
-/* 调试面板样式 */
-.debug-panel {
-  position: fixed; left: 12px; bottom: 12px; width: 60%; max-width: 520px; max-height: 40vh;
-  background: rgba(0,0,0,0.8); color: #d6f3d6; border-radius: 8px; z-index: 2000;
-  overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-.debug-panel__header {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 10px; font-size: 13px; background: rgba(0,0,0,0.9); color: #fff;
-}
-.debug-panel__actions { display: flex; gap: 6px; }
-.debug-btn { background: #2f7d32; color: #fff; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; }
-.debug-panel__body { padding: 8px 10px; max-height: 32vh; overflow: auto; }
-.debug-log { padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.1); }
-.debug-log__meta { font-size: 11px; color: #9fd49f; margin-bottom: 2px; }
-.debug-log__msg { font-size: 12px; white-space: pre-wrap; word-break: break-word; }
-.debug-log.lv-warn .debug-log__meta { color: #ffd666; }
-.debug-log.lv-error .debug-log__meta { color: #ff7875; }
 </style>
 
