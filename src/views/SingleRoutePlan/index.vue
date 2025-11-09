@@ -14,7 +14,6 @@
       </div>
       <button class="tip-button" @click="enableLocation">开启</button>
     </div>
-
   </div>
 </template>
 

@@ -52,6 +52,12 @@ export const constantRoutes = [
     component: () => import('@/views/SimpleMap/index'),
     meta: { title: 'SimpleMap', icon: 'map' }
   },
+  {
+    path: '/RealTimeTraffic/index',
+    name: 'RealTimeTraffic',
+    component: () => import('@/views/RealTimeTraffic/index'),
+    meta: { title: '实时路况', icon: 'map' }
+  },
   { path: '*', redirect: '/404', hidden: true }
 ]
 
