@@ -1,23 +1,6 @@
 <template>
   <div class="mobile-container">
-    <!-- 日志显示面板 -->
-    <div id="log-panel" v-if="showLogPanel" class="log-panel">
-      <div class="log-header">
-        <span class="log-title">调试日志</span>
-        <button class="log-clear-btn" @click="clearLogs">清空</button>
-        <button class="log-close-btn" @click="showLogPanel = false">关闭</button>
-      </div>
-      <div class="log-content">
-        <div
-          v-for="(log, index) in logs"
-          :key="index"
-          :class="['log-item', 'log-type-' + log.type]">
-          {{ log.message }}
-        </div>
-      </div>
-    </div>
-    <!-- 显示日志按钮 -->
-    <button v-if="!showLogPanel" class="show-log-btn" @click="showLogPanel = true">显示调试日志</button>
+    <!-- <LogPanel ref="logPanel" /> -->
 
     <!-- 地图容器（使用 vue-baidu-map 组件） -->
     <baidu-map
@@ -28,20 +11,11 @@
       @ready="onMapReady"
     />
 
-    <!-- 缩放控制元素 -->
-    <div class="custom-element">
-      <div class="zoom-btn zoom-in" @click="zoomIn(1)">
-        <i class="el-icon-plus"></i>
-      </div>
-      <div class="separator"></div>
-      <div class="zoom-btn zoom-out" @click="zoomIn(-1)">
-        <i class="el-icon-minus"></i>
-      </div>
-    </div>
-    <!-- 固定定位元素：定位按钮 -->
-    <div class="fixed-locate-button" @click="locateToCurrent">
-      <img src="@/assets/position.png" alt="定位" class="loc-icon">
-    </div>
+    <!-- 缩放控制组件 -->
+    <ZoomControl :map="map" @zoom-change="handleZoomChange" />
+
+    <!-- 定位按钮 -->
+    <LocateButton @locate="locateToCurrent" />
 
     <!-- 巡航仪表盘 -->
     <div class="speed-dashboard">
@@ -117,6 +91,9 @@
 import userIconImg from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 import LocationTipBar from '@/components/LocationTipBar.vue'
+import ZoomControl from '@/components/ZoomControl.vue'
+import LocateButton from '@/components/LocateButton.vue'
+// import LogPanel from '@/components/LogPanel.vue'
 
 // 常量配置
 const MAP_CONFIG = {
@@ -129,7 +106,7 @@ const LOC_STORAGE_KEY = 'speedcruise_last_location'
 
 export default {
   name: 'SpeedCruise',
-  components: { MapLicenseInfo, LocationTipBar },
+  components: { MapLicenseInfo, LocationTipBar, ZoomControl, LocateButton, /* LogPanel */ },
   data() {
     return {
       map: null,
@@ -150,79 +127,19 @@ export default {
       speedLimit: 1,
       showSpeedLimitDialog: false,
       tempSpeedLimit: 1,
-      // 日志相关变量
-      logs: [],
-      maxLogs: 50,
-      showLogPanel: false,
+
     }
   },
   async mounted() {
     this.checkLocationPermission()
-
-    // 初始化日志系统
-    this.addLog('SpeedCruise页面开始加载', 'info')
-    this.addLog('URL参数: ' + window.location.search, 'info')
-
-    // 记录组件状态
-    setTimeout(() => {
-      this.addLog('SpeedCruise组件已成功挂载', 'info')
-      this.addLog('当前时间: ' + new Date().toLocaleString(), 'info')
-      this.addLog('地图中心点: ' + JSON.stringify(this.mapCenter), 'info')
-      this.addLog('默认缩放级别: ' + this.defaultZoom, 'info')
-      this.addLog('这是一条警告日志示例', 'warn')
-      this.addLog('这是一条错误日志示例 - 仅用于测试', 'error')
-    }, 1000)
   },
   created() {
     try {
-      // 详细日志记录当前URL
-      console.log('当前完整URL:', window.location.href)
-      console.log('URL search部分:', window.location.search)
-      console.log('URL hash部分:', window.location.hash)
-
-      // 修复：同时从hash中解析参数（因为Vue路由使用hash模式）
-      let urlToParse = window.location.href
-      const latMatch = urlToParse.match(/[?&]lat=([^&]*)/)
-      const lngMatch = urlToParse.match(/[?&]lng=([^&]*)/)
-
-      console.log('经纬度参数匹配结果:', { latMatch, lngMatch })
-
-      if (latMatch && lngMatch) {
-        const latParam = latMatch[1]
-        const lngParam = lngMatch[1]
-        console.log('从URL中提取到经纬度参数:', latParam, lngParam)
-
-        const lat = parseFloat(decodeURIComponent(latParam))
-        const lng = parseFloat(decodeURIComponent(lngParam))
-
-        if (!isNaN(lat) && !isNaN(lng)) {
-          // 直接使用URL中的百度坐标系经纬度
-          this.prefetchedLocation = { lng, lat }
-          this.mapCenter = { lng, lat }
-          console.log('使用URL参数中的百度坐标系经纬度:', lng, lat)
-          // 同时记录到我们的日志系统中
-          if (this.addLog) {
-            this.addLog(`URL参数经纬度: lng=${lng}, lat=${lat}`, 'info')
-          }
-        } else {
-          console.warn('经纬度参数解析失败，不是有效数字:', lat, lng)
-        }
-      } else {
-        console.log('未找到lat和lng参数，尝试读取本地缓存')
-        // 如果URL中没有参数，再读取本地缓存定位，作为默认打开时的中心
-        const cached = localStorage.getItem(LOC_STORAGE_KEY)
-        if (cached) {
-          try {
-            const obj = JSON.parse(cached)
-            if (obj && obj.lng && obj.lat) {
-              this.prefetchedLocation = { lng: obj.lng, lat: obj.lat }
-              console.log('使用缓存的经纬度:', obj.lng, obj.lat)
-            }
-          } catch (parseError) {
-            console.error('解析缓存失败:', parseError)
-          }
-        }
-      }
+      const lat = parseFloat(this.$route.query.lat);
+      const lng = parseFloat(this.$route.query.lng);
+      // 直接使用URL中的百度坐标系经纬度
+      this.prefetchedLocation = { lng, lat }
+      this.mapCenter = { lng, lat }
 
       if (navigator && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
         const vm = this
@@ -233,7 +150,6 @@ export default {
             if (lng && lat) {
               vm.prefetchedLocation = { lng, lat }
               try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng, lat, ts: Date.now() })) } catch (_) {}
-              console.log('created: prefetched location =', lng, lat)
             }
           } catch (e) {}
         }, function(err) {
@@ -245,29 +161,6 @@ export default {
   },
 
   methods: {
-    // 日志相关方法
-    addLog(message, type = 'info') {
-      // 格式化消息，添加时间戳
-      const timestamp = new Date().toLocaleTimeString()
-      const formattedMessage = `[${timestamp}] ${message}`
-
-      // 添加到日志数组
-      this.logs.push({ message: formattedMessage, type })
-
-      // 限制日志数量
-      if (this.logs.length > this.maxLogs) {
-        this.logs.shift()
-      }
-
-      // 同时输出到控制台
-      if (console && console[type === 'info' ? 'log' : type]) {
-        console[type === 'info' ? 'log' : type](message)
-      }
-    },
-
-    clearLogs() {
-      this.logs = []
-    },
         // 缩放功能（delta=+1 放大；-1 缩小）
     zoomIn(delta) {
       if (!this.map || (delta !== 1 && delta !== -1)) return
@@ -277,12 +170,17 @@ export default {
         : Math.max(currentZoom - 1, 3)  // 最小级别
       if (target !== currentZoom) this.map.setZoom(target)
     },
+
+    // 处理缩放变化事件
+    handleZoomChange(zoomInfo) {
+      console.log('缩放级别变化:', zoomInfo)
+      // 可以在这里添加额外的逻辑，比如记录用户操作等
+    },
     // 地图组件就绪回调
     onMapReady({ BMap, map }) {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
-        this.addLog('地图初始化完成', 'info')
         // 基础能力
         try { this.map.enableScrollWheelZoom(true) } catch (e) {}
         // 应用个性化地图样式
@@ -299,59 +197,28 @@ export default {
       } catch (e) {
       }
     },
-// 应用个性化地图样式
-    // applyMapStyle() {
-    //   try {
-    //     // 使用您提供的个性化地图样式ID
-    //     this.map.setMapStyleV2({
-    //       styleId: '1d294b17073734b31946b8334c2d0fa4'
-    //     })
-    //     console.log('个性化地图样式已应用，样式ID: 1d294b17073734b31946b8334c2d0fa4')
-    //   } catch (styleError) {
-    //     console.error('个性化地图样式应用失败:', styleError)
-    //   }
-    // },
     // 定位到当前位置：使用created钩子中已存储的URL参数
     locateToCurrent() {
       if (this.isLocating) return // 防抖处理
-
       this.isLocating = true
-
-      if (!this.map) {
-        this.handleLocationFallback()
-        this.isLocating = false
-        return
-      }
 
       try {
         // 直接使用created钩子中已存储的prefetchedLocation
-        if (this.prefetchedLocation && this.prefetchedLocation.lng && this.prefetchedLocation.lat) {
           const { lng, lat } = this.prefetchedLocation;
-          console.log('使用prefetchedLocation中的经纬度参数:', { lng, lat });
+          const point = new window.BMap.Point(lng, lat);
+          const center = this.map.getCenter();
+          const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: lng, lat: lat });
           
-          // 验证经纬度有效性
-          if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-            const point = new window.BMap.Point(lng, lat);
-            const center = this.map.getCenter();
-            const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: lng, lat: lat });
-            
-            if (!this.isCenterInitialized) {
-              this.map.centerAndZoom(point, MAP_CONFIG.LOCATION_ZOOM);
-              this.isCenterInitialized = true;
-            } else if (dist > 50) {
-              this.map.panTo(point);
-            }
-            
-            this.locationPoint = point;
-            try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: lng, lat: lat, ts: Date.now() })) } catch (_) {}
-            this.updateCurrentMarker(point);
-            console.log('成功使用prefetchedLocation中的经纬度参数进行定位');
-          } else {
-            console.warn('prefetchedLocation中的经纬度参数无效');
+          if (!this.isCenterInitialized) {
+            this.map.centerAndZoom(point, MAP_CONFIG.LOCATION_ZOOM);
+            this.isCenterInitialized = true;
+          } else if (dist > 50) {
+            this.map.panTo(point);
           }
-        } else {
-          console.warn('prefetchedLocation未设置或无效');
-        }
+          
+          this.locationPoint = point;
+          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: lng, lat: lat, ts: Date.now() })) } catch (_) {}
+          this.updateCurrentMarker(point);
       } catch (error) {
         console.error('使用prefetchedLocation进行定位时出错:', error);
       } finally {
@@ -359,58 +226,6 @@ export default {
         this.showLocationTip = false;
       }
     },
-    // 定位失败时的默认处理
-    handleLocationFallback() {
-      const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
-      this.locationPoint = defaultPoint
-      if (this.map) this.map.panTo(defaultPoint)
-      this.updateCurrentMarker(defaultPoint)
-    },
-
-    // 静默定位后回调
-    getCurrentLocationSilently(cb) {
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      console.log('Geolocation silent: start getCurrentPosition')
-      geolocation.getCurrentPosition(function(r){
-        try {
-          const status = this.getStatus ? this.getStatus() : undefined
-          console.log('Geolocation silent: callback status =', status, 'SUCCESS =', window.BMAP_STATUS_SUCCESS, 'result =', r)
-        } catch (_) {}
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          vm.locationPoint = r.point
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
-          const center = vm.map.getCenter()
-          const dist = vm.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: r.point.lng, lat: r.point.lat })
-          if (!vm.isCenterInitialized) {
-            vm.map.centerAndZoom(r.point, MAP_CONFIG.LOCATION_ZOOM)
-            vm.isCenterInitialized = true
-          } else if (dist > 50) {
-            vm.map.panTo(r.point)
-          }
-          vm.updateCurrentMarker(r.point)
-          if (cb) cb()
-          console.log('静默定位成功')
-        } else {
-          vm.handleSilentLocationFallback(cb)
-          console.error('静默定位失败，已回退到默认点2')
-        }
-      },
-    (err) => {
-        console.log(err,JSON.stringify(err),'静默定位err')
-        vm.handleSilentLocationFallback(cb)
-    })
-    },
-    // 静默定位失败时的默认处理
-    handleSilentLocationFallback(cb) {
-      const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
-      this.locationPoint = defaultPoint
-      this.map.centerAndZoom(defaultPoint, MAP_CONFIG.DEFAULT_ZOOM)
-      this.updateCurrentMarker(defaultPoint)
-      if (cb) cb()
-      console.warn('静默定位回退到默认位置:', defaultPoint.lng, defaultPoint.lat)
-    },
-
     // 检查定位权限
     checkLocationPermission() {
       if (!navigator.permissions) return
@@ -428,7 +243,6 @@ export default {
         this.locateToCurrent()
       }
     },
-
     // 统一封装 Android 注入对象调用
     callAndroidMethod(methodName, ...args) {
       try {
@@ -445,32 +259,32 @@ export default {
     },
 
     // 切换声音状态
-        toggleSound() {
-          this.soundEnabled = !this.soundEnabled;
-        },
+    toggleSound() {
+      this.soundEnabled = !this.soundEnabled;
+    },
 
-        // 打开限速设置弹窗
-        openSpeedLimitDialog() {
-          this.tempSpeedLimit = this.speedLimit;
-          this.showSpeedLimitDialog = true;
-        },
+    // 打开限速设置弹窗
+    openSpeedLimitDialog() {
+      this.tempSpeedLimit = this.speedLimit;
+      this.showSpeedLimitDialog = true;
+    },
 
-        // 确认修改限速
-        confirmSpeedLimit() {
-          // 验证输入值
-          const limit = parseFloat(this.tempSpeedLimit);
-          if (limit && limit > 0 && limit <= 200) {
-            this.speedLimit = Math.round(limit * 100) / 100; // 保留两位小数
-            this.showSpeedLimitDialog = false;
-          } else {
-            this.$message && this.$message.error('请输入有效的限速值（1-200）');
-          }
-        },
+    // 确认修改限速
+    confirmSpeedLimit() {
+      // 验证输入值
+      const limit = parseFloat(this.tempSpeedLimit);
+      if (limit && limit > 0 && limit <= 200) {
+        this.speedLimit = Math.round(limit * 100) / 100; // 保留两位小数
+        this.showSpeedLimitDialog = false;
+      } else {
+        this.$message && this.$message.error('请输入有效的限速值（1-200）');
+      }
+    },
 
-        // 取消修改限速
-        cancelSpeedLimit() {
-          this.showSpeedLimitDialog = false;
-        },
+    // 取消修改限速
+    cancelSpeedLimit() {
+      this.showSpeedLimitDialog = false;
+    },
 
         // 验证限速输入
         validateSpeedInput() {
@@ -532,98 +346,7 @@ export default {
 </script>
 
 <style scoped>
-/* 日志面板样式 */
-.log-panel {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  right: 10px;
-  background: rgba(0, 0, 0, 0.85);
-  color: #00ff00;
-  padding: 15px;
-  font-family: monospace;
-  font-size: 14px;
-  max-height: 250px;
-  overflow-y: auto;
-  z-index: 9999;
-  border-radius: 8px;
-  border: 2px solid #0066ff;
-}
 
-.log-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #0066ff;
-}
-
-.log-title {
-  font-weight: bold;
-  color: #ffff00;
-  font-size: 16px;
-}
-
-.log-clear-btn,
-.log-close-btn {
-  padding: 4px 8px;
-  font-size: 12px;
-  border: none;
-  border-radius: 4px;
-  color: white;
-  cursor: pointer;
-  margin-left: 5px;
-}
-
-.log-clear-btn {
-  background: #ff9900;
-}
-
-.log-close-btn {
-  background: #ff0000;
-}
-
-.log-content {
-  line-height: 1.5;
-}
-
-.log-item {
-  margin-bottom: 5px;
-  padding: 2px 0;
-}
-
-.log-type-info {
-  color: #00ff00;
-}
-
-.log-type-warn {
-  color: #ffff66;
-}
-
-.log-type-error {
-  color: #ff6666;
-}
-
-.show-log-btn {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background: #0066ff;
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: bold;
-  z-index: 9999;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.show-log-btn:active {
-  background: #004dcc;
-}
 </style>
 
 <style lang="scss" scoped>
@@ -645,13 +368,7 @@ export default {
   z-index: 10;
 }
 
-/* 定位按钮：右18px，下107px */
-.fixed-locate-button {
-  position: fixed; right: 4.44vw; bottom: 18vh; width: 14.67vw; height: 6.38vh;
-  background: #fff; border-radius: 2vw; display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 1000;
-}
-.fixed-locate-button .loc-icon { width: 23px; height: 23px; }
+
 
 /* 定位提示条 */
 .location-tip-bar {
@@ -662,50 +379,6 @@ export default {
 .tip-icon { width: 16px; height: 16px; background: #FF4D4F; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
 .tip-text { font-size: 13px; color: #E22A2A; font-weight: 600; }
 .tip-button { background: #FF4835; color: #fff; border: none; border-radius: 10px; padding: 6px 12px; font-size: 13px; height: 25px; }
-
-/* 缩放控制元素样式 */
-    .custom-element {
-      position: fixed;
-      right: 4.44vw; /* 距离右侧16px (16/360) */
-      bottom: 25vh; /* 距离下方138px (138/800) */
-      width: 14.67vw; /* 60px (60/360) - 与定位按钮宽度一致 */
-      height: 15vh; /* 120px (120/800) */
-      background: #FFFFFF;
-      box-shadow: -2px 2px 3px 0px rgba(179,179,179,0.3);
-      border-radius: 2vw 2vw 2vw 2vw; /* 使用vw单位 */
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-around;
-      align-items: center;
-      padding: 2vw 0; /* 使用vw单位 */
-    }
-
-/* 缩放按钮样式 */
-.custom-element .zoom-btn {
-  width: 9vw; /* 36px转换为vw单位 */
-  height: 9vw;
-  border-radius: 1vw;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.custom-element .zoom-btn i {
-  font-size: 4vw;
-  color: #409EFF;
-  font-weight: bold;
-}
-
-/* 分隔线样式 */
-.custom-element .separator {
-  width: 6vw;
-  height: 0.25vh;
-  background-color: #EBEEF5;
-  margin: 1vh 0;
-}
-
 
 /* 速度仪表盘样式 */
 .speed-dashboard {

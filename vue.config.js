@@ -15,8 +15,8 @@ module.exports = {
   productionSourceMap: false,
   devServer: {
     port: port,
-    // open: !1,
-    host: '192.168.1.72',
+    open: !1,
+    // host: '192.168.1.72',
     overlay: {
       warnings: false,
       errors: true
