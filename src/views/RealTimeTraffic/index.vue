@@ -79,7 +79,41 @@ export default {
   },
   created() {
     try {
-      // 优先读取本地缓存定位，作为默认打开时的中心
+      // 详细日志记录当前URL
+      console.log('当前完整URL:', window.location.href)
+      console.log('URL search部分:', window.location.search)
+      console.log('URL hash部分:', window.location.hash)
+
+      // 修复：同时从hash中解析参数（因为Vue路由使用hash模式）
+      let urlToParse = window.location.href
+      const latMatch = urlToParse.match(/[?&]lat=([^&]*)/)
+      const lngMatch = urlToParse.match(/[?&]lng=([^&]*)/)
+
+      console.log('经纬度参数匹配结果:', { latMatch, lngMatch })
+
+      if (latMatch && lngMatch) {
+        const latParam = latMatch[1]
+        const lngParam = lngMatch[1]
+        console.log('从URL中提取到经纬度参数:', latParam, lngParam)
+
+        const lat = parseFloat(decodeURIComponent(latParam))
+        const lng = parseFloat(decodeURIComponent(lngParam))
+
+        // 验证经纬度是否有效
+        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          // 直接使用URL中的百度坐标系经纬度
+          this.prefetchedLocation = { lng, lat }
+          this.mapCenter = { lng, lat }
+          console.log('使用URL参数中的百度坐标系经纬度:', lng, lat)
+        } else {
+          console.warn('经纬度参数解析失败，不是有效数字或范围超出:', lat, lng)
+        }
+      } else {
+        console.log('未找到lat和lng参数，尝试读取本地缓存')
+      }
+
+      // 如果 URL 参数无效，则读取本地缓存定位
+      if (!this.prefetchedLocation) {
         const cached = localStorage.getItem(LOC_STORAGE_KEY)
         if (cached) {
           const obj = JSON.parse(cached)
@@ -88,20 +122,21 @@ export default {
           }
         }
 
-      if (navigator && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
-        const vm = this
-        navigator.geolocation.getCurrentPosition(function(pos) {
-          try {
-            const lng = pos && pos.coords && pos.coords.longitude
-            const lat = pos && pos.coords && pos.coords.latitude
-            if (lng && lat) {
-              vm.prefetchedLocation = { lng, lat }
-              try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng, lat, ts: Date.now() })) } catch (_) {}
-              console.log('created: prefetched location =', lng, lat)
-            }
-          } catch (e) {}
-        }, function(err) {
-        }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 })
+        if (navigator && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
+          const vm = this
+          navigator.geolocation.getCurrentPosition(function(pos) {
+            try {
+              const lng = pos && pos.coords && pos.coords.longitude
+              const lat = pos && pos.coords && pos.coords.latitude
+              if (lng && lat) {
+                vm.prefetchedLocation = { lng, lat }
+                try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng, lat, ts: Date.now() })) } catch (_) {}
+                console.log('created: prefetched location =', lng, lat)
+              }
+            } catch (e) {}
+          }, function(err) {
+          }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 })
+        }
       }
     } catch (e) {}
   },
@@ -188,7 +223,7 @@ export default {
     //     console.error('个性化地图样式应用失败:', styleError)
     //   }
     // },
-    // 定位到当前位置：仅回到当前位置，不加图标
+    // 定位到当前位置：使用URL中的经纬度参数
     locateToCurrent() {
       if (this.isLocating) return // 防抖处理
 
@@ -200,31 +235,48 @@ export default {
         return
       }
 
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      geolocation.getCurrentPosition(function(r){
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          const center = vm.map.getCenter()
-          const dist = vm.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: r.point.lng, lat: r.point.lat })
-          if (!vm.isCenterInitialized) {
-            vm.map.centerAndZoom(r.point, MAP_CONFIG.LOCATION_ZOOM)
-            vm.isCenterInitialized = true
-          } else if (dist > 50) {
-            vm.map.panTo(r.point)
+      // 从URL中获取经纬度参数
+      const url = window.location.href;
+      console.log('URL参数解析：', url);
+      const latMatch = url.match(/[?&]lat=([^&]*)/i);
+      const lngMatch = url.match(/[?&]lng=([^&]*)/i);
+      
+      try {
+        if (latMatch && lngMatch) {
+          // 解码URL参数并转换为数值
+          const lat = parseFloat(decodeURIComponent(latMatch[1]));
+          const lng = parseFloat(decodeURIComponent(lngMatch[1]));
+          console.log('从URL提取的经纬度参数:', { lat, lng });
+          
+          // 验证经纬度有效性
+          if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            const point = new window.BMap.Point(lng, lat);
+            const center = this.map.getCenter();
+            const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: lng, lat: lat });
+            
+            if (!this.isCenterInitialized) {
+              this.map.centerAndZoom(point, MAP_CONFIG.LOCATION_ZOOM);
+              this.isCenterInitialized = true;
+            } else if (dist > 50) {
+              this.map.panTo(point);
+            }
+            
+            this.locationPoint = point;
+            try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: lng, lat: lat, ts: Date.now() })) } catch (_) {}
+            this.updateCurrentMarker(point);
+            console.log('成功使用URL中的经纬度参数进行定位');
+          } else {
+            console.warn('URL中的经纬度参数无效');
           }
-          vm.locationPoint = r.point
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
-          vm.updateCurrentMarker(r.point)
-          vm.showLocationTip = false
-          console.log('定位成功:', r.point.lng, r.point.lat)
         } else {
-          // alert('failed' + (this.getStatus ? this.getStatus() : ''))
-          vm.handleLocationFallback()
-          vm.showLocationTip = true
-          console.error('定位失败，已回退到默认点1')
+          console.warn('URL中未找到经纬度参数');
         }
-        vm.isLocating = false
-      })
+      } catch (error) {
+        console.error('解析URL经纬度参数时出错:', error);
+      } finally {
+        this.isLocating = false;
+        this.showLocationTip = false;
+      }
     },
     // 定位失败时的默认处理
     handleLocationFallback() {
@@ -380,9 +432,9 @@ export default {
   z-index: 10;
 }
 
-/* 定位按钮：右18px，下107px */
+/* 定位按钮：右18px，距离顶部10vh */
 .fixed-locate-button {
-  position: fixed; right: 18px; bottom: 107px; width: 49px; height: 51px;
+  position: fixed; right: 4.44vw; bottom: 15vh; width: 14.67vw; height:14.67vw;
   background: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 1000;
 }

@@ -1,5 +1,23 @@
 <template>
   <div class="mobile-container">
+    <!-- 日志显示面板 -->
+    <div id="log-panel" v-if="showLogPanel" class="log-panel">
+      <div class="log-header">
+        <span class="log-title">调试日志</span>
+        <button class="log-clear-btn" @click="clearLogs">清空</button>
+        <button class="log-close-btn" @click="showLogPanel = false">关闭</button>
+      </div>
+      <div class="log-content">
+        <div
+          v-for="(log, index) in logs"
+          :key="index"
+          :class="['log-item', 'log-type-' + log.type]">
+          {{ log.message }}
+        </div>
+      </div>
+    </div>
+    <!-- 显示日志按钮 -->
+    <button v-if="!showLogPanel" class="show-log-btn" @click="showLogPanel = true">显示调试日志</button>
 
     <!-- 地图容器（使用 vue-baidu-map 组件） -->
     <baidu-map
@@ -132,21 +150,79 @@ export default {
       speedLimit: 1,
       showSpeedLimitDialog: false,
       tempSpeedLimit: 1,
+      // 日志相关变量
+      logs: [],
+      maxLogs: 50,
+      showLogPanel: false,
     }
   },
   async mounted() {
     this.checkLocationPermission()
+
+    // 初始化日志系统
+    this.addLog('SpeedCruise页面开始加载', 'info')
+    this.addLog('URL参数: ' + window.location.search, 'info')
+
+    // 记录组件状态
+    setTimeout(() => {
+      this.addLog('SpeedCruise组件已成功挂载', 'info')
+      this.addLog('当前时间: ' + new Date().toLocaleString(), 'info')
+      this.addLog('地图中心点: ' + JSON.stringify(this.mapCenter), 'info')
+      this.addLog('默认缩放级别: ' + this.defaultZoom, 'info')
+      this.addLog('这是一条警告日志示例', 'warn')
+      this.addLog('这是一条错误日志示例 - 仅用于测试', 'error')
+    }, 1000)
   },
   created() {
     try {
-      // 优先读取本地缓存定位，作为默认打开时的中心
+      // 详细日志记录当前URL
+      console.log('当前完整URL:', window.location.href)
+      console.log('URL search部分:', window.location.search)
+      console.log('URL hash部分:', window.location.hash)
+
+      // 修复：同时从hash中解析参数（因为Vue路由使用hash模式）
+      let urlToParse = window.location.href
+      const latMatch = urlToParse.match(/[?&]lat=([^&]*)/)
+      const lngMatch = urlToParse.match(/[?&]lng=([^&]*)/)
+
+      console.log('经纬度参数匹配结果:', { latMatch, lngMatch })
+
+      if (latMatch && lngMatch) {
+        const latParam = latMatch[1]
+        const lngParam = lngMatch[1]
+        console.log('从URL中提取到经纬度参数:', latParam, lngParam)
+
+        const lat = parseFloat(decodeURIComponent(latParam))
+        const lng = parseFloat(decodeURIComponent(lngParam))
+
+        if (!isNaN(lat) && !isNaN(lng)) {
+          // 直接使用URL中的百度坐标系经纬度
+          this.prefetchedLocation = { lng, lat }
+          this.mapCenter = { lng, lat }
+          console.log('使用URL参数中的百度坐标系经纬度:', lng, lat)
+          // 同时记录到我们的日志系统中
+          if (this.addLog) {
+            this.addLog(`URL参数经纬度: lng=${lng}, lat=${lat}`, 'info')
+          }
+        } else {
+          console.warn('经纬度参数解析失败，不是有效数字:', lat, lng)
+        }
+      } else {
+        console.log('未找到lat和lng参数，尝试读取本地缓存')
+        // 如果URL中没有参数，再读取本地缓存定位，作为默认打开时的中心
         const cached = localStorage.getItem(LOC_STORAGE_KEY)
         if (cached) {
-          const obj = JSON.parse(cached)
-          if (obj && obj.lng && obj.lat) {
-            this.prefetchedLocation = { lng: obj.lng, lat: obj.lat }
+          try {
+            const obj = JSON.parse(cached)
+            if (obj && obj.lng && obj.lat) {
+              this.prefetchedLocation = { lng: obj.lng, lat: obj.lat }
+              console.log('使用缓存的经纬度:', obj.lng, obj.lat)
+            }
+          } catch (parseError) {
+            console.error('解析缓存失败:', parseError)
           }
         }
+      }
 
       if (navigator && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
         const vm = this
@@ -163,10 +239,35 @@ export default {
         }, function(err) {
         }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 })
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('created钩子函数执行出错:', e)
+    }
   },
 
   methods: {
+    // 日志相关方法
+    addLog(message, type = 'info') {
+      // 格式化消息，添加时间戳
+      const timestamp = new Date().toLocaleTimeString()
+      const formattedMessage = `[${timestamp}] ${message}`
+
+      // 添加到日志数组
+      this.logs.push({ message: formattedMessage, type })
+
+      // 限制日志数量
+      if (this.logs.length > this.maxLogs) {
+        this.logs.shift()
+      }
+
+      // 同时输出到控制台
+      if (console && console[type === 'info' ? 'log' : type]) {
+        console[type === 'info' ? 'log' : type](message)
+      }
+    },
+
+    clearLogs() {
+      this.logs = []
+    },
         // 缩放功能（delta=+1 放大；-1 缩小）
     zoomIn(delta) {
       if (!this.map || (delta !== 1 && delta !== -1)) return
@@ -181,6 +282,7 @@ export default {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
+        this.addLog('地图初始化完成', 'info')
         // 基础能力
         try { this.map.enableScrollWheelZoom(true) } catch (e) {}
         // 应用个性化地图样式
@@ -209,7 +311,7 @@ export default {
     //     console.error('个性化地图样式应用失败:', styleError)
     //   }
     // },
-    // 定位到当前位置：仅回到当前位置，不加图标
+    // 定位到当前位置：使用created钩子中已存储的URL参数
     locateToCurrent() {
       if (this.isLocating) return // 防抖处理
 
@@ -221,31 +323,41 @@ export default {
         return
       }
 
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      geolocation.getCurrentPosition(function(r){
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          const center = vm.map.getCenter()
-          const dist = vm.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: r.point.lng, lat: r.point.lat })
-          if (!vm.isCenterInitialized) {
-            vm.map.centerAndZoom(r.point, MAP_CONFIG.LOCATION_ZOOM)
-            vm.isCenterInitialized = true
-          } else if (dist > 50) {
-            vm.map.panTo(r.point)
+      try {
+        // 直接使用created钩子中已存储的prefetchedLocation
+        if (this.prefetchedLocation && this.prefetchedLocation.lng && this.prefetchedLocation.lat) {
+          const { lng, lat } = this.prefetchedLocation;
+          console.log('使用prefetchedLocation中的经纬度参数:', { lng, lat });
+          
+          // 验证经纬度有效性
+          if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            const point = new window.BMap.Point(lng, lat);
+            const center = this.map.getCenter();
+            const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: lng, lat: lat });
+            
+            if (!this.isCenterInitialized) {
+              this.map.centerAndZoom(point, MAP_CONFIG.LOCATION_ZOOM);
+              this.isCenterInitialized = true;
+            } else if (dist > 50) {
+              this.map.panTo(point);
+            }
+            
+            this.locationPoint = point;
+            try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: lng, lat: lat, ts: Date.now() })) } catch (_) {}
+            this.updateCurrentMarker(point);
+            console.log('成功使用prefetchedLocation中的经纬度参数进行定位');
+          } else {
+            console.warn('prefetchedLocation中的经纬度参数无效');
           }
-          vm.locationPoint = r.point
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
-          vm.updateCurrentMarker(r.point)
-          vm.showLocationTip = false
-          console.log('定位成功:', r.point.lng, r.point.lat)
         } else {
-          // alert('failed' + (this.getStatus ? this.getStatus() : ''))
-          vm.handleLocationFallback()
-          vm.showLocationTip = true
-          console.error('定位失败，已回退到默认点1')
+          console.warn('prefetchedLocation未设置或无效');
         }
-        vm.isLocating = false
-      })
+      } catch (error) {
+        console.error('使用prefetchedLocation进行定位时出错:', error);
+      } finally {
+        this.isLocating = false;
+        this.showLocationTip = false;
+      }
     },
     // 定位失败时的默认处理
     handleLocationFallback() {
@@ -419,6 +531,101 @@ export default {
 }
 </script>
 
+<style scoped>
+/* 日志面板样式 */
+.log-panel {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #00ff00;
+  padding: 15px;
+  font-family: monospace;
+  font-size: 14px;
+  max-height: 250px;
+  overflow-y: auto;
+  z-index: 9999;
+  border-radius: 8px;
+  border: 2px solid #0066ff;
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #0066ff;
+}
+
+.log-title {
+  font-weight: bold;
+  color: #ffff00;
+  font-size: 16px;
+}
+
+.log-clear-btn,
+.log-close-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  margin-left: 5px;
+}
+
+.log-clear-btn {
+  background: #ff9900;
+}
+
+.log-close-btn {
+  background: #ff0000;
+}
+
+.log-content {
+  line-height: 1.5;
+}
+
+.log-item {
+  margin-bottom: 5px;
+  padding: 2px 0;
+}
+
+.log-type-info {
+  color: #00ff00;
+}
+
+.log-type-warn {
+  color: #ffff66;
+}
+
+.log-type-error {
+  color: #ff6666;
+}
+
+.show-log-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #0066ff;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  z-index: 9999;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.show-log-btn:active {
+  background: #004dcc;
+}
+</style>
+
 <style lang="scss" scoped>
 .mobile-container {
   width: 100%;
@@ -503,7 +710,7 @@ export default {
 /* 速度仪表盘样式 */
 .speed-dashboard {
   position: fixed;
-  top: 2.5vh;
+  top: 12vh;
   left: 0;
   right: 0;
   z-index: 100;
@@ -513,7 +720,7 @@ export default {
 .dashboard-content {
   background: rgba(10, 20, 40, 0.85);
   border-radius: 3.33vw;
-  padding: 2.5vw;
+  padding: 3.33vw;
   display: flex;
   align-items: center;
   justify-content: space-between;

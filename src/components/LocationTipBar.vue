@@ -21,17 +21,17 @@ export default {
 <style lang="scss" scoped>
 .location-tip-bar {
   position: fixed;
-  bottom: 20px;
+  bottom: 5vh;
   left: 50%;
-  margin-left: 5vw;
+  transform: translateX(-50%);
   width: 90%;
   max-width: 400px;
-  height: 37px;
+  height: 4.63vh;
   background: #FFE2E0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 4.44vw;
   box-sizing: border-box;
   border-radius: 8px;
   z-index: 1001;
