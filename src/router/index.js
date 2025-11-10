@@ -58,6 +58,12 @@ export const constantRoutes = [
     component: () => import('@/views/RealTimeTraffic/index'),
     meta: { title: '实时路况', icon: 'map' }
   },
+  {
+    path: '/SpeedCruise/index',
+    name: 'SpeedCruise',
+    component: () => import('@/views/SpeedCruise/index'),
+    meta: { title: '测速巡航', icon: 'map' }
+  },
   { path: '*', redirect: '/404', hidden: true }
 ]
 

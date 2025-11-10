@@ -23,7 +23,7 @@ export default {
   position: fixed;
   bottom: 20px;
   left: 50%;
-  transform: translateX(-50%);
+  margin-left: 5vw;
   width: 90%;
   max-width: 400px;
   height: 37px;
