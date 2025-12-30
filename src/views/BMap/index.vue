@@ -449,7 +449,6 @@ export default {
     },
     initAutocomplete() {
       try {
-        if (!window.BMap || !this.map) return
         const ac = new window.BMap.Autocomplete({
           input: 'searchInput',
           location: this.map
@@ -485,7 +484,6 @@ export default {
       } catch (e) {
       }
     },
-
     // 检查定位权限
     checkLocationPermission() {
       if (!navigator.permissions) return
@@ -500,13 +498,11 @@ export default {
         this.showLocationTip = true
       })
     },
-
         // 开启定位功能
     enableLocation() {
       if (this.locationPermission === 'denied') {
         // 用户之前拒绝了权限，引导用户手动开启
         this.$toast('请在浏览器设置中开启定位权限')
-
         // 在安卓内嵌环境下，尝试调用原生方法
         if (window.AndroidInterface && window.AndroidInterface.openLocationSettings) {
           try {
@@ -523,34 +519,21 @@ export default {
 
     // 返回：重置到初始化状态
     handleBack() {
-      try {
-        // 清空地图覆盖物与结果
-        if (this.map) {
-          this.map.clearOverlays()
-        }
-        // 重置内部状态
-        this.isGoing = false
-        this.isRoutePlanning = false
-        this.searchText = ''
-        this.showLocationCard = false
-        this.currentLocationText = '正在获取位置...'
-        this.distance = 0
-        this.routeDistance = ''
-        this.routeTime = ''
-        this.startLocationText = '我的位置'
-        this.endLocationText = ''
-        this.startPoint = null
-        this.endPoint = null
-        // 回到默认中心并重新定位
-        const defaultPoint = new window.BMap.Point(120.019, 30.274)
-        if (this.map) {
-          this.map.centerAndZoom(defaultPoint, 16)
-        }
-        // 重新静默定位与UI联动
-        this.getCurrentLocation()
-      } catch (e) {
-        console.error('返回初始化失败:', e)
-      }
+      this.map.clearOverlays()
+      // 重置内部状态
+      this.isGoing = false
+      this.isRoutePlanning = false
+      this.searchText = ''
+      this.showLocationCard = false
+      this.currentLocationText = '正在获取位置...'
+      this.distance = 0
+      this.routeDistance = ''
+      this.routeTime = ''
+      this.startLocationText = '我的位置'
+      this.endLocationText = ''
+      this.startPoint = null
+      this.endPoint = null
+      this.getCurrentLocation()
     },
         // 交换起点和终点
     swapLocations() {
