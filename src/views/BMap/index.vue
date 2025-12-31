@@ -498,7 +498,7 @@ export default {
         this.showLocationTip = true
       })
     },
-        // 开启定位功能
+    // 开启定位功能
     enableLocation() {
       if (this.locationPermission === 'denied') {
         // 用户之前拒绝了权限，引导用户手动开启
@@ -520,7 +520,6 @@ export default {
     // 返回：重置到初始化状态
     handleBack() {
       this.map.clearOverlays()
-      // 重置内部状态
       this.isGoing = false
       this.isRoutePlanning = false
       this.searchText = ''
@@ -535,48 +534,16 @@ export default {
       this.endPoint = null
       this.getCurrentLocation()
     },
-        // 交换起点和终点
     swapLocations() {
-      // 交换显示文本
-      const temp = this.startLocationText
-      this.startLocationText = this.endLocationText
-      this.endLocationText = temp
-
-      // 交换起点和终点坐标
+      // 解构赋值同步交换文本和坐标
+      [this.startLocationText, this.endLocationText] = [this.endLocationText, this.startLocationText];
       if (this.startPoint && this.endPoint) {
-        const tempPoint = this.startPoint
-        this.startPoint = this.endPoint
-        this.endPoint = tempPoint
+        [this.startPoint, this.endPoint] = [this.endPoint, this.startPoint];
       }
-
-      // 如果地图上有路径，重新计算路径
-      if (this.map && this.startPoint && this.endPoint) {
-        this.calculateRoute()
-      }
-
-      // 更新导航信息
-      this.updateNavigationInfo()
+      // 清除覆盖物并重新计算路径
+      this.map.clearOverlays();
+      this.createAndRunRidingRoute(this.startPoint, this.endPoint);
     },
-
-    // 计算路径
-    calculateRoute() {
-      if (!this.map || !this.startPoint || !this.endPoint) {
-        return
-      }
-
-      // 清除之前的路径
-      this.map.clearOverlays()
-
-      // 使用通用方法
-      this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-    },
-
-    // 更新导航信息
-    updateNavigationInfo() {
-      // 重新计算路径
-      this.calculateRoute()
-    },
-
     getCurrentLocation() {
       const handleDefaultLocation = () => {
         const defaultPoint = new window.BMap.Point(120.019, 30.274);
@@ -601,7 +568,6 @@ export default {
         handleDefaultLocation();
       }
     },
-
     getAddressFromPoint(point) {
       const geoc = new window.BMap.Geocoder()
       geoc.getLocation(point, (result) => {
@@ -614,16 +580,23 @@ export default {
         }
       })
     },
-
     startNavigation() {
-      // 去这里：强制使用当前选中的点作为终点
       if (this.locationPoint) {
         this.endPoint = this.locationPoint
         if (this.currentLocationText) {
           this.endLocationText = this.currentLocationText
         }
       }
-
+      const errorHandler = (err) => { 
+        const startPoint = new window.BMap.Point(120.019, 30.274)
+        const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
+        this.startPoint = startPoint
+        if (!this.endPoint) {
+          this.endPoint = endPoint
+        }
+        this.createAndRunRidingRoute(startPoint, endPoint)
+        try {window.AndroidInterface.showFullAdFromWeb() } catch (e) {}
+      }
       this.isGoing = true
       // 获取当前位置
       if (navigator.geolocation) {
@@ -631,62 +604,35 @@ export default {
           (position) => {
             const startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
             // 优先使用交换后的终点坐标，如果没有则使用默认值
+            console.log('this.endPoint :', this.endPoint);
+            console.log('this.locationPoint :', this.locationPoint);
             const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
 
             // 保存起点和终点坐标
             this.startPoint = startPoint
             // 只有在endPoint还没有设置时才设置它，避免覆盖已设置的终点
+            console.log('this.endPoint:', this.endPoint);
             if (!this.endPoint) {
               this.endPoint = endPoint
-            }
+            } 
 
       // 使用通用方法
       this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-      try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
+      try {window.AndroidInterface.showFullAdFromWeb() } catch (e) {}
           },
-                    (error) => {
-            console.error('获取当前位置失败:', error)
-            // 使用EFC中心作为起点进行路径规划
-            const startPoint = new window.BMap.Point(120.019, 30.274)
-            // 优先使用交换后的终点坐标，如果没有则使用默认值
-            const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
-
-            // 保存起点和终点坐标
-            this.startPoint = startPoint
-            // 只有在endPoint还没有设置时才设置它，避免覆盖已设置的终点
-            if (!this.endPoint) {
-              this.endPoint = endPoint
-            }
-
-      // 使用通用方法
-      this.createAndRunRidingRoute(startPoint, endPoint)
-      try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
+          (error) => {
+            errorHandler()
           }
         )
       } else {
-        // 浏览器不支持定位，使用EFC中心作为起点进行路径规划
-        const startPoint = new window.BMap.Point(120.019, 30.274)
-        // 优先使用交换后的终点坐标，如果没有则使用默认值
-        const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
-
-        // 保存起点和终点坐标
-        this.startPoint = startPoint
-        // 只有在endPoint还没有设置时才设置它，避免覆盖已设置的终点
-        if (!this.endPoint) {
-          this.endPoint = endPoint
-        }
-
-      // 使用通用方法
-      this.createAndRunRidingRoute(startPoint, endPoint)
-      try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
+        errorHandler()
       }
     },
 
     // 搜索地点功能
     searchLocation() {
       if (!this.searchText.trim()) {
-        this.$toast('请输入搜索内容')
-        return
+            return this.$toast('请输入搜索内容')
       }
       // 创建地址解析器
       const geoc = new window.BMap.Geocoder()
@@ -694,15 +640,9 @@ export default {
       // 搜索地址
       geoc.getPoint(this.searchText, (point) => {
         if (point) {
-          // 清除之前的标记
           this.map.clearOverlays()
-
           // 保存目标位置点
-          this.locationPoint = point
-
-          // 同时设置为终点坐标（用于路径规划）
-          this.endPoint = point
-
+          this.locationPoint = this.endPoint = point
           // 如果还没有设置起点，尝试获取当前位置作为起点
           if (!this.startPoint) {
             if (navigator.geolocation) {
@@ -711,22 +651,16 @@ export default {
                   this.startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
                 },
                 () => {
-                  // 如果获取当前位置失败，使用默认起点
                   this.startPoint = new window.BMap.Point(120.019, 30.274)
                 }
               )
             } else {
-              // 浏览器不支持定位，使用默认起点
               this.startPoint = new window.BMap.Point(120.019, 30.274)
             }
           }
-
-          // 设置地图中心点和缩放级别
           this.map.centerAndZoom(point, 16)
-
           // 获取详细地址信息（用于卡片）
           this.getAddressFromPoint(point)
-
           // 优先用本地搜索拿到与关键词最贴近的POI标题/地址，补充到标记信息中
           try {
             const kw = (this.searchText || '').trim()
@@ -796,7 +730,6 @@ export default {
 
     // 使用 shop.png 创建标记，并绑定点击展示信息（可附带POI元信息）
     createShopMarker(point, meta) {
-      if (!this.map || !point) return
       try {
         const icon = new window.BMap.Icon(shopIcon, new window.BMap.Size(48, 56), {
           imageSize: new window.BMap.Size(48, 56)
@@ -805,11 +738,7 @@ export default {
         marker.__poiMeta = meta || null
         this.map.addOverlay(marker)
         marker.addEventListener('click', () => {
-          if (marker.__poiMeta) {
-            this.showStationInfo(marker.__poiMeta, point)
-          } else {
-            this.showShopInfo(point)
-          }
+        this.showStationInfo(marker.__poiMeta, point)
         })
         return marker
       } catch (e) {
@@ -839,7 +768,6 @@ export default {
         console.error('创建用户定位标记失败:', e)
       }
     },
-
     // 根据模式处理附近搜索
     handleNearbySearch() {
       if (this.isGasMode) {
@@ -960,8 +888,6 @@ export default {
     searchNearbyGasStations() {
       // 调用安卓的注入方法
       // this.callAndroidShowFullAd()
-
-      if (!this.map) return
       // 基准点：优先用搜索得到的点；否则当前位置；否则默认点
       let centerPoint = null
       if (this.locationPoint && this.locationPoint.lng && this.locationPoint.lat) {
@@ -1027,95 +953,42 @@ export default {
       })
     },
 
-    // 展示地点信息（信息窗）
-    showShopInfo(point) {
-      try {
-        const geoc = new window.BMap.Geocoder()
-        geoc.getLocation(point, (result) => {
-          const placeName = (result && result.surroundingPois && result.surroundingPois.length)
-            ? result.surroundingPois[0].title
-            : (result && result.address ? result.address : '未知地点')
-
-          // 同步底部卡片：地点名 + 计算距离
-          this.locationPoint = point
-          this.currentLocationText = placeName
-          this.showLocationCard = true
-          this.computeDistanceSilent(point)
-
-          // 设置为终点坐标（用于路径规划）
-          this.endPoint = point
-
-          // 如果还没有设置起点，尝试获取当前位置作为起点
-          if (!this.startPoint) {
-            if (navigator.geolocation) {
-              navigator.geolocation.getCurrentPosition(
-                (position) => {
-                  this.startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-                },
-                () => {
-                  // 如果获取当前位置失败，使用默认起点
-                  this.startPoint = new window.BMap.Point(120.019, 30.274)
-                }
-              )
-            } else {
-              // 浏览器不支持定位，使用默认起点
-              this.startPoint = new window.BMap.Point(120.019, 30.274)
-            }
-          }
-
-          const content = `<div style=\"font-size:14px;color:#333;line-height:1.6;\">${placeName}</div>`
-          const infoWindow = new window.BMap.InfoWindow(content, {
-            width: 220,
-            title: '地点信息'
-          })
-          this.map.openInfoWindow(infoWindow, point)
-        })
-      } catch (e) {
-        console.error('展示地点信息失败:', e)
-      }
-    },
-
-    // 展示骑士驿站POI信息（基于本地搜索返回的POI）
+    // 展示骑士驿站POI信息
     showStationInfo(poi, point) {
       try {
-        const title = (poi && (poi.title || poi.name)) ? (poi.title || poi.name) : '骑士驿站'
-        const address = (poi && poi.address) ? poi.address : ''
-
-        // 同步底部卡片与终点
-        this.locationPoint = point
-        this.currentLocationText = title
-        this.endPoint = point
-        this.endLocationText = title
+        const { title, address } = poi
+        const { isGasMode } = this
+        
+        // 同步位置信息
+        this.locationPoint = this.endPoint = point
+        this.currentLocationText = this.endLocationText = title
         this.showLocationCard = true
-
+        
         // 计算距离
         this.computeDistanceSilent(point)
-
-        // 根据模式设置信息窗标题：燃气模式显示 POI 的 title，否则显示"骑士驿站"
-        const infoWindowTitle = this.isGasMode ? title : '骑士驿站'
-
-        // 信息窗内容
-        const content = `
-          <div style="font-size:14px;color:#333;line-height:1.6;">
-            <div style="font-weight:600;margin-bottom:4px;">${title}</div>
-            ${address ? `<div style=\"color:#666;\">${address}</div>` : ''}
-          </div>
-        `
+        
+        // 创建信息窗
+        const content = `<div style="font-size:14px;color:#333;line-height:1.6;">
+          <div style="font-weight:600;margin-bottom:4px;">${title}</div>
+          ${address ? `<div style="color:#666;">${address}</div>` : ''}
+        </div>`
         const infoWindow = new window.BMap.InfoWindow(content, {
           width: 260,
-          title: infoWindowTitle
+          title: isGasMode ? title : '骑士驿站'
         })
         this.map.openInfoWindow(infoWindow, point)
       } catch (e) {
         console.error('展示站点信息失败:', e)
-        // 回退到通用信息展示
-        this.showShopInfo(point)
       }
     },
 
     // 仅计算距离并写入到卡片
     computeDistanceSilent(targetPoint) {
-      if (!this.map || !targetPoint) return
+      const errorHandler = () => {
+        const defaultPoint = new window.BMap.Point(120.019, 30.274)
+        const distance = this.map.getDistance(defaultPoint, targetPoint)
+        this.distance = Math.round(distance)
+      }
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -1124,70 +997,45 @@ export default {
             this.distance = Math.round(distance)
           },
           () => {
-            const defaultPoint = new window.BMap.Point(120.019, 30.274)
-            const distance = this.map.getDistance(defaultPoint, targetPoint)
-            this.distance = Math.round(distance)
+            errorHandler()
           }
         )
       } else {
-        const defaultPoint = new window.BMap.Point(120.019, 30.274)
-        const distance = this.map.getDistance(defaultPoint, targetPoint)
-        this.distance = Math.round(distance)
+        errorHandler()
       }
     },
 
     // 计算并显示距离
     calculateAndDisplayDistance(targetPoint) {
+      const errorHandler = () => {
+        const defaultPoint = new window.BMap.Point(120.019, 30.274)
+        const distance = this.map.getDistance(defaultPoint, targetPoint)
+        const roundedDistance = Math.round(distance)
+        this.$toast(`距离EFC中心约${roundedDistance}米`)
+        this.distance = roundedDistance
+        this.createShopMarker(targetPoint)
+      }
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
             const currentPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
             const distance = this.map.getDistance(currentPoint, targetPoint)
             const roundedDistance = Math.round(distance) // 四舍五入到整数
-
-            // 显示距离信息
-      this.$toast(`距离您当前位置约${roundedDistance}米`)
-
-            // 也可以将距离保存到组件数据中，用于其他地方显示
+            this.$toast(`距离您当前位置约${roundedDistance}米`)
             this.distance = roundedDistance
-
-            // 同时给目标点添加一个商铺标记并绑定信息窗
             this.createShopMarker(targetPoint)
           },
           (error) => {
-            console.error('获取当前位置失败:', error)
-            // 使用默认位置计算距离
-            const defaultPoint = new window.BMap.Point(120.019, 30.274)
-            const distance = this.map.getDistance(defaultPoint, targetPoint)
-            const roundedDistance = Math.round(distance)
-
-      this.$toast(`距离EFC中心约${roundedDistance}米`)
-
-            this.distance = roundedDistance
-
-            // 同时给目标点添加一个商铺标记并绑定信息窗
-            this.createShopMarker(targetPoint)
+            errorHandler()
           }
         )
       } else {
-        // 浏览器不支持定位，使用默认位置计算距离
-        const defaultPoint = new window.BMap.Point(120.019, 30.274)
-        const distance = this.map.getDistance(defaultPoint, targetPoint)
-        const roundedDistance = Math.round(distance)
-
-    this.$toast(`距离EFC中心约${roundedDistance}米`)
-
-        this.distance = roundedDistance
-
-        // 同时给目标点添加一个商铺标记并绑定信息窗
-        this.createShopMarker(targetPoint)
+        errorHandler()
       }
     },
-
     // 调用安卓的注入方法 showFullAdFromWeb
     callAndroidShowFullAd() {
       try {
-        // 检查是否在安卓WebView环境中
         if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') {
           window.AndroidInterface.showFullAdFromWeb()
         } else if (window.showFullAdFromWeb && typeof window.showFullAdFromWeb === 'function') {
@@ -1743,9 +1591,5 @@ export default {
   height: 4px;
   background: #999999;
 }
-
-
-
-
 </style>
 
