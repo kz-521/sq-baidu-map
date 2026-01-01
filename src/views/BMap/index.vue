@@ -128,6 +128,7 @@
 import shopIcon from '@/assets/shop.png'
 import userIcon from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
+import { wgs84ToBd09New } from '@/utils/coord'
 
 export default {
   name: 'BMap',
@@ -234,7 +235,7 @@ export default {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
-        this.getCurrentLocation()
+        this.getCurrLocation()
         // 地图交互时不弹起输入
         this.bindMapInteractionGuards()
         this.initAutocomplete()
@@ -487,8 +488,10 @@ export default {
     // 检查定位权限
     checkLocationPermission() {
       if (!navigator.permissions) return
+      alert(4)
       navigator.permissions.query({ name: 'geolocation' }).then((result) => {
         this.locationPermission = result.state
+        alert(result.state )
         if (result.state === 'denied') {
           this.showLocationTip = true
         } else if (result.state === 'granted') {
@@ -532,7 +535,7 @@ export default {
       this.endLocationText = ''
       this.startPoint = null
       this.endPoint = null
-      this.getCurrentLocation()
+      this.getCurrLocation()
     },
     swapLocations() {
       // 解构赋值同步交换文本和坐标
@@ -544,8 +547,9 @@ export default {
       this.map.clearOverlays();
       this.createAndRunRidingRoute(this.startPoint, this.endPoint);
     },
-    getCurrentLocation() {
+    getCurrLocation() {
       const handleDefaultLocation = () => {
+        // alert(2)
         const defaultPoint = new window.BMap.Point(120.019, 30.274);
         this.locationPoint = defaultPoint;
         this.map.centerAndZoom(defaultPoint, 16);
@@ -554,8 +558,10 @@ export default {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
+            // alert(1)
             const { latitude, longitude } = position.coords
-            const point = new window.BMap.Point(longitude, latitude)
+            const bdCoords = wgs84ToBd09New(longitude, latitude);
+            const point = new window.BMap.Point(bdCoords.longitude, bdCoords.latitude)
             this.locationPoint = point
             this.map.centerAndZoom(point, 16)
             this.createOrUpdateUserMarker(point)

@@ -31,8 +31,6 @@
 
     <!-- 定位提示条 -->
     <LocationTipBar :visible="showLocationTip" @enable="enableLocation" />
-
-
   </div>
 </template>
 

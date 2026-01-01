@@ -101,11 +101,22 @@ export const wgs84tobd09 = (lng, lat) => {
   return result
 }
 
+export const wgs84ToBd09New = (lng, lat) => {
+  const x = lng;
+  const y = lat;
+  const z = Math.sqrt(x * x + y * y) + 0.00002 * Math.sin(y * Math.PI);
+  const theta = Math.atan2(y, x) + 0.00003 * Math.cos(x * Math.PI);
+  const bd_lon = z * Math.cos(theta) + 0.0065;
+  const bd_lat = z * Math.sin(theta) + 0.006;
+  return { lng: bd_lon, lat: bd_lat };
+}
+
 export default {
   x_PI,
   PI,
   a,
   ee,
+  wgs84ToBd09New,
   outOfChina,
   transformlat,
   transformlng,
