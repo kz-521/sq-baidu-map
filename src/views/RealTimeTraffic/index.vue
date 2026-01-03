@@ -200,8 +200,6 @@ export default {
     // 更新/创建当前用户位置图标
     updateCurrentMarker(point) {
       try {
-        if (!this.map || !point) return
-
         // 调整用户图标尺寸，使其更自然（宽高比约为1:1.2）
         const size = new window.BMap.Size(32, 38)
         const icon = new window.BMap.Icon(userIconImg, size, {
