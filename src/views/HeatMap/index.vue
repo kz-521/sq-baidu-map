@@ -6,7 +6,6 @@
       class="map-container"
       :center="mapCenter"
       :zoom="defaultZoom"
-      :scroll-wheel-zoom="true"
       @ready="onMapReady"
     />
 
@@ -96,24 +95,23 @@ export default {
   created() {
     try {
       // 优先读取本地缓存定位，作为默认打开时的中心
-        const cached = localStorage.getItem(LOC_STORAGE_KEY)
+        // const cached = localStorage.getItem(LOC_STORAGE_KEY)
+        const cached = null
         if (cached) {
           const obj = JSON.parse(cached)
           if (obj && obj.lng && obj.lat) {
             this.prefetchedLocation = { lng: obj.lng, lat: obj.lat }
           }
         }
-
-      if (navigator && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
+      if (navigator.geolocation) {
         const vm = this
         navigator.geolocation.getCurrentPosition(function(pos) {
           try {
-            const lng = pos && pos.coords && pos.coords.longitude
-            const lat = pos && pos.coords && pos.coords.latitude
-            if (lng && lat) {
-              vm.prefetchedLocation = { lng, lat }
-              try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng, lat, ts: Date.now() })) } catch (_) {}
-              console.log('created: prefetched location =', lng, lat)
+            const {longitude, latitude}  = pos.coords
+            if (longitude && latitude) {
+              vm.prefetchedLocation = { longitude, latitude }
+              try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ longitude, latitude, ts: Date.now() })) } catch (_) {}
+              console.log('created: prefetched location =', longitude, latitude)
             }
           } catch (e) {}
         }, function(err) {
@@ -128,17 +126,16 @@ export default {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
-        // 基础能力
-        try { this.map.enableScrollWheelZoom(true) } catch (e) {}
         // 居中：优先使用预取定位；否则等待静默定位后再居中，避免先居中到默认位置造成跳动
         if (this.prefetchedLocation) {
           const p = new BMap.Point(this.prefetchedLocation.lng, this.prefetchedLocation.lat)
           this.map.centerAndZoom(p, MAP_CONFIG.DEFAULT_ZOOM)
           this.locationPoint = p
-          this.updateCurrentMarker(p)
+          this.updateCurrMarker(p)
           this.showLocationTip = false
           this.isCenterInitialized = true
         }
+        // return
         this.setupMapEventListeners()
       } catch (e) {
       }
@@ -153,7 +150,7 @@ export default {
         this.mapLoaded = true
         this.initializeHeatmap()
       }
-      this.map.addEventListener('tilesloaded', onTilesLoaded)
+      this.map.addEventListener('tilesloaded', onTilesLoaded)  // 当地图所有图块完成加载时触发此事件
     },
 
     // 初始化热力图
@@ -192,7 +189,7 @@ export default {
           }
           vm.locationPoint = r.point
           try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
-          vm.updateCurrentMarker(r.point)
+          vm.updateCurrMarker(r.point)
           vm.showLocationTip = false
           console.log('定位成功:', r.point.lng, r.point.lat)
         } else {
@@ -209,19 +206,15 @@ export default {
       const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
       this.locationPoint = defaultPoint
       if (this.map) this.map.panTo(defaultPoint)
-      this.updateCurrentMarker(defaultPoint)
+      this.updateCurrMarker(defaultPoint)
     },
 
     // 静默定位后回调
     getCurrentLocationSilently(cb) {
+      // return
       const geolocation = new window.BMap.Geolocation()
       const vm = this
-      console.log('Geolocation silent: start getCurrentPosition')
       geolocation.getCurrentPosition(function(r){
-        try {
-          const status = this.getStatus ? this.getStatus() : undefined
-          console.log('Geolocation silent: callback status =', status, 'SUCCESS =', window.BMAP_STATUS_SUCCESS, 'result =', r)
-        } catch (_) {}
         if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
           vm.locationPoint = r.point
           try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
@@ -233,29 +226,28 @@ export default {
           } else if (dist > 50) {
             vm.map.panTo(r.point)
           }
-          vm.updateCurrentMarker(r.point)
+          vm.updateCurrMarker(r.point)
           if (cb) cb()
           console.log('静默定位成功')
         } else {
-          vm.handleSilentLocationFallback(cb)
+          vm.errorLocationfb(cb)
           console.error('静默定位失败，已回退到默认点2')
         }
       },
     (err) => {
         console.log(err,JSON.stringify(err),'静默定位err')
-        vm.handleSilentLocationFallback(cb)
+        vm.errorLocationfb(cb)
     })
     },
     // 静默定位失败时的默认处理
-    handleSilentLocationFallback(cb) {
-      const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
+    errorLocationfb(cb) {
+      const defaultPoint = new window.BMap.Point( 116.391, 39.906217 )
       this.locationPoint = defaultPoint
-
       if (!this.mapLoaded) {
         this.map.centerAndZoom(defaultPoint, MAP_CONFIG.DEFAULT_ZOOM)
       }
 
-      this.updateCurrentMarker(defaultPoint)
+      this.updateCurrMarker(defaultPoint)
       if (cb) cb()
       console.warn('静默定位回退到默认位置:', defaultPoint.lng, defaultPoint.lat)
     },
@@ -557,12 +549,9 @@ export default {
     },
 
     // 更新/创建当前用户位置图标
-    updateCurrentMarker(point) {
+    updateCurrMarker(point) {
       try {
-        if (!this.map || !point) return
-
-        // 调整用户图标尺寸，使其更自然（宽高比约为1:1.2）
-        const size = new window.BMap.Size(32, 38)
+        const size = new window.BMap.Size(32, 38)   // 调整用户图标尺寸，使其更自然（宽高比约为1:1.2）
         const icon = new window.BMap.Icon(userIconImg, size, {
           imageSize: size,
           anchor: new window.BMap.Size(16, 19), // 锚点居中

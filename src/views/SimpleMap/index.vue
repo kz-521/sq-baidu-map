@@ -1,12 +1,7 @@
 <template>
   <div class="mobile-container">
     <!-- 地图容器（使用 vue-baidu-map 组件） -->
-    <baidu-map
-      class="map-container"
-      :center="mapCenter"
-      :zoom="defaultZoom"
-      :scroll-wheel-zoom="true"
-      @ready="onMapReady"
+    <baidu-map class="map-container" :center="mapCenter" :zoom="15" @ready="onMapReady"
     />
 
     <!-- 缩放控制元素 -->
@@ -34,13 +29,6 @@ import userIconImg from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 import LocationTipBar from '@/components/LocationTipBar.vue'
 
-// 常量配置
-const MAP_CONFIG = {
-  DEFAULT_CENTER: { lng: 116.391, lat: 39.906217 },
-  DEFAULT_ZOOM: 15,
-  LOCATION_ZOOM: 16,
-}
-
 export default {
   name: 'HeatMap',
   components: { MapLicenseInfo, LocationTipBar },
@@ -51,8 +39,7 @@ export default {
       locationPermission: 'prompt',
       locationPoint: null,
       // baidu-map 初始配置
-      mapCenter: { lng: MAP_CONFIG.DEFAULT_CENTER.lng, lat: MAP_CONFIG.DEFAULT_CENTER.lat },
-      defaultZoom: MAP_CONFIG.DEFAULT_ZOOM,
+      mapCenter: { lng: 116.391, lat: 39.906217 },
       currentMarker: null,
       // 用户移动方向相关
       userHeading: 0, // 用户朝向角度（0-360度）
@@ -71,7 +58,6 @@ export default {
       try {
         if (!window.BMap) window.BMap = BMap
         this.map = map
-        try { this.map.enableScrollWheelZoom(true) } catch (e) {}
       } catch (error) {
         console.error('地图初始化失败:', error)
       }
@@ -81,9 +67,7 @@ export default {
     // 定位到当前位置：仅回到当前位置，不加图标
     locateToCurrent() {
       if (this.isLocating) return // 防抖处理
-
       this.isLocating = true
-
       if (!this.map) {
         this.handleLocationFallback()
         this.isLocating = false
@@ -108,7 +92,7 @@ export default {
 
     // 定位失败时的默认处理
     handleLocationFallback() {
-      const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
+      const defaultPoint = new window.BMap.Point(116.391, 39.906217)
       this.locationPoint = defaultPoint
       if (this.map) this.map.panTo(defaultPoint)
       this.updateCurrentMarker(defaultPoint)
@@ -149,8 +133,6 @@ export default {
     // 更新/创建当前用户位置图标
     updateCurrentMarker(point) {
       try {
-        if (!this.map || !point) return
-
         // 计算用户移动方向
         this.updateUserHeading(point)
 
@@ -218,17 +200,12 @@ export default {
         this.userHeading = angle
       }
     },
-
     // 缩放功能（delta=+1 放大；-1 缩小）
     zoomIn(delta) {
-      if (!this.map || (delta !== 1 && delta !== -1)) return
       const currentZoom = this.map.getZoom()
-      const target = delta === 1
-        ? Math.min(currentZoom + 1, 19) // 最大级别
-        : Math.max(currentZoom - 1, 3)  // 最小级别
-      if (target !== currentZoom) this.map.setZoom(target)
+      const target = delta === 1? Math.min(currentZoom + 1, 19) : Math.max(currentZoom - 1, 3)  // 最小级别
+      this.map.setZoom(target)
     }
-
   }
 }
 </script>

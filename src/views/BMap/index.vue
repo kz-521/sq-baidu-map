@@ -65,7 +65,6 @@
       class="map-container"
       :center="mapCenter"
       :zoom="defaultZoom"
-      :scroll-wheel-zoom="true"
       @ready="onMapReady"
     />
 
@@ -226,7 +225,6 @@ export default {
     }
   },
   async mounted() {
-    // 检查定位权限
     this.checkLocationPermission()
   },
   methods: {
@@ -235,7 +233,7 @@ export default {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
-        this.getCurrLocation()
+        
         // 地图交互时不弹起输入
         this.bindMapInteractionGuards()
         this.initAutocomplete()
@@ -251,6 +249,18 @@ export default {
       } catch (error) {
         this.$toast.fail('地图初始化失败')
       }
+      this.setupMapEventListeners()
+    },
+    // 设置地图事件监听器
+    setupMapEventListeners() {
+      const onTilesLoaded = () => {
+        this.map.removeEventListener('tilesloaded', onTilesLoaded)
+        this.initializeHeatmap()
+      }
+      this.map.addEventListener('tilesloaded', onTilesLoaded)  // 当地图所有图块完成加载时触发此事件
+    },
+    initializeHeatmap() {
+      this.getCurrLocation()
     },
     // 在路径规划线条上添加方向箭头
     addDirectionalArrows(polyline) {
@@ -488,10 +498,8 @@ export default {
     // 检查定位权限
     checkLocationPermission() {
       if (!navigator.permissions) return
-      alert(4)
       navigator.permissions.query({ name: 'geolocation' }).then((result) => {
         this.locationPermission = result.state
-        alert(result.state )
         if (result.state === 'denied') {
           this.showLocationTip = true
         } else if (result.state === 'granted') {
@@ -547,32 +555,32 @@ export default {
       this.map.clearOverlays();
       this.createAndRunRidingRoute(this.startPoint, this.endPoint);
     },
+
     getCurrLocation() {
       const handleDefaultLocation = () => {
-        // alert(2)
         const defaultPoint = new window.BMap.Point(120.019, 30.274);
         this.locationPoint = defaultPoint;
         this.map.centerAndZoom(defaultPoint, 16);
         this.createOrUpdateUserMarker(defaultPoint);
       };
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            // alert(1)
-            const { latitude, longitude } = position.coords
-            const bdCoords = wgs84ToBd09New(longitude, latitude);
-            const point = new window.BMap.Point(bdCoords.longitude, bdCoords.latitude)
-            this.locationPoint = point
-            this.map.centerAndZoom(point, 16)
-            this.createOrUpdateUserMarker(point)
-          },
-          (error) => {
-            handleDefaultLocation();
-          }
-        )
-      } else {
-        handleDefaultLocation();
-      }
+
+      const geolocation = new window.BMap.Geolocation()
+      const vm = this
+      geolocation.getCurrentPosition(function(r){
+        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+          vm.locationPoint = r.point
+          const center = vm.map.getCenter()
+            const point = new window.BMap.Point(center.lng, center.lat)
+            vm.locationPoint = point
+            vm.map.centerAndZoom(point, 16)
+            vm.createOrUpdateUserMarker(point)
+        } else {
+          handleDefaultLocation()
+        }
+      },
+    (err) => {
+      handleDefaultLocation()
+    })
     },
     getAddressFromPoint(point) {
       const geoc = new window.BMap.Geocoder()

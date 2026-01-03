@@ -5,7 +5,7 @@
     <baidu-map
       class="map-container"
       :center="mapCenter"
-      :zoom="defaultZoom"
+      :zoom="15"
       :scroll-wheel-zoom="true"
       @ready="onMapReady"
     />
@@ -31,15 +31,6 @@ import LocationTipBar from '@/components/LocationTipBar.vue'
 import ZoomControl from '@/components/ZoomControl.vue'
 import LocateButton from '@/components/LocateButton.vue'
 
-// 常量配置
-const MAP_CONFIG = {
-  DEFAULT_CENTER: { lng: 116.391, lat: 39.906217 },
-  DEFAULT_ZOOM: 15,
-  LOCATION_ZOOM: 16,
-}
-
-const LOC_STORAGE_KEY = 'heatmap_last_location'
-
 export default {
   name: 'RealTimeTraffic',
   components: { MapLicenseInfo, LocationTipBar, ZoomControl, LocateButton },
@@ -52,8 +43,7 @@ export default {
       prefetchedLocation: null,
       isCenterInitialized: false,
       currentMarker: null,
-      mapCenter: { lng: MAP_CONFIG.DEFAULT_CENTER.lng, lat: MAP_CONFIG.DEFAULT_CENTER.lat },
-      defaultZoom: MAP_CONFIG.DEFAULT_ZOOM,
+      mapCenter: {},
       // 防抖相关
       isLocating: false, // 防止重复定位
     }
@@ -63,9 +53,8 @@ export default {
   },
   created() {
     try {
-      const lat = parseFloat(this.$route.query.lat);
-      const lng = parseFloat(this.$route.query.lng);
       // 直接使用URL中的百度坐标系经纬度
+      const { lat, lng } = this.$route.query
       this.prefetchedLocation = { lng, lat }
       this.mapCenter = { lng, lat }
     } catch (e) {}
@@ -77,7 +66,6 @@ export default {
       if (!this.map || !window.BMap) return
       try {
         this.isSatellite = !this.isSatellite
-
         // 百度地图类型常量
         let mapType
         if (this.isSatellite) {
@@ -90,8 +78,6 @@ export default {
             // 使用数字常量：2 表示卫星地图
             mapType = 2
           }
-          // // 在卫星地图上应用个性化样式
-          // this.applyMapStyle()
         } else {
           // 普通地图
           if (window.BMap && window.BMap.MapType && window.BMap.MapType.NORMAL_MAP) {
@@ -103,10 +89,7 @@ export default {
             mapType = 1
           }
         }
-
         this.map.setMapType(mapType)
-        // // 在卫星地图上应用个性化样式
-          // this.applyMapStyle()
       } catch (e) {
         console.error('切换地图类型失败:', e)
       }
@@ -116,14 +99,10 @@ export default {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
-        // 基础能力
-        try { this.map.enableScrollWheelZoom(true) } catch (e) {}
-        // 应用个性化地图样式
-        // this.applyMapStyle()
         // 居中：优先使用预取定位；否则等待静默定位后再居中，避免先居中到默认位置造成跳动
         if (this.prefetchedLocation) {
           const p = new BMap.Point(this.prefetchedLocation.lng, this.prefetchedLocation.lat)
-          this.map.centerAndZoom(p, MAP_CONFIG.DEFAULT_ZOOM)
+          this.map.centerAndZoom(p, 15)
           this.locationPoint = p
           this.updateCurrentMarker(p)
           this.showLocationTip = false
@@ -132,18 +111,6 @@ export default {
       } catch (e) {
       }
     },
-// 应用个性化地图样式
-    // applyMapStyle() {
-    //   try {
-    //     // 使用您提供的个性化地图样式ID
-    //     this.map.setMapStyleV2({
-    //       styleId: '1d294b17073734b31946b8334c2d0fa4'
-    //     })
-    //     console.log('个性化地图样式已应用，样式ID: 1d294b17073734b31946b8334c2d0fa4')
-    //   } catch (styleError) {
-    //     console.error('个性化地图样式应用失败:', styleError)
-    //   }
-    // },
     // 定位到当前位置：使用URL中的经纬度参数
     locateToCurrent() {
       if (this.isLocating) return // 防抖处理
@@ -157,14 +124,14 @@ export default {
         const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: lng, lat: lat });
           
           if (!this.isCenterInitialized) {
-            this.map.centerAndZoom(point, MAP_CONFIG.LOCATION_ZOOM);
+            this.map.centerAndZoom(point, 16);
             this.isCenterInitialized = true;
           } else if (dist > 50) {
             this.map.panTo(point);
           }
           
           this.locationPoint = point;
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: lng, lat: lat, ts: Date.now() })) } catch (_) {}
+          try { localStorage.setItem('heatmap_last_location', JSON.stringify({ lng: lng, lat: lat, ts: Date.now() })) } catch (_) {}
           this.updateCurrentMarker(point);
           console.log('成功使用URL中的经纬度参数进行定位');
       } catch (error) {

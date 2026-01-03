@@ -107,7 +107,7 @@ export default {
       // 解析终点坐标
       if (!this.endPoint) {
         this.parseDestinationFromUrl()
-        this.$toast && this.$toast('未提供目的地坐标')
+         this.$toast('未提供目的地坐标')
         return
       }
 
@@ -123,7 +123,7 @@ export default {
        // 超时保护：若定位迟迟无结果，则显示错误提示，不进行路径规划
        const guardTimer = setTimeout(() => {
          if (!this.hasPlanned) {
-           this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+            this.$toast.fail('获取定位失败,请稍后再试')
            this.hasPlanned = true
          }
        }, 3000)
@@ -150,7 +150,7 @@ export default {
         try { clearTimeout(guardTimer) } catch (e) {}
         if (this.hasPlanned) return
         // 浏览器不支持定位，显示提示信息，不进行路径规划
-        this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+         this.$toast.fail('获取定位失败,请稍后再试')
         this.hasPlanned = true
       }
     },
@@ -283,8 +283,7 @@ export default {
         // 静默处理错误
       }
     },
-
-        // 通用路线规划：优先骑行，失败则降级驾车，其次步行
+    // 通用路线规划：优先骑行，失败则降级驾车，其次步行
     createAndRunRidingRoute(startPoint, endPoint) {
       // 如果有pick点，进行两阶段规划：定位点->取货点->目的地
       this.createTwoStageRoute(startPoint, this.pickPoint, endPoint)
@@ -404,7 +403,7 @@ export default {
           if (onFail) {
             onFail(r1)
           } else {
-            this.$toast && this.$toast.fail(`${stageName}失败`)
+             this.$toast.fail(`${stageName}失败`)
           }
         }
       })
@@ -555,14 +554,14 @@ export default {
         this.parseDestinationFromUrl()
         this.startNavigation()
               } catch (error) {
-          this.$toast && this.$toast.fail('地图初始化失败')
+           this.$toast.fail('地图初始化失败')
         }
     },
     locateToCurrent() {
       // 点击定位时调用安卓注入方法
       try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
       if (!navigator.geolocation) {
-        this.$toast && this.$toast.fail('浏览器不支持定位，使用默认位置')
+         this.$toast.fail('浏览器不支持定位，使用默认位置')
         const defaultPoint = new window.BMap.Point(120.170700, 30.257069)
         this.map.panTo(defaultPoint)
         this.locationPoint = defaultPoint
@@ -601,16 +600,16 @@ export default {
           if (error.code === 1) {
             this.showLocationTip = true
             this.locationPermission = 'denied'
-            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+             this.$toast.fail('获取定位失败,请稍后再试')
           } else if (error.code === 2) {
             this.showLocationTip = true
             this.locationPermission = 'unavailable'
-            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+             this.$toast.fail('获取定位失败,请稍后再试')
           } else if (error.code === 3) {
             // 超时错误
-            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+             this.$toast.fail('获取定位失败,请稍后再试')
           } else {
-            this.$toast && this.$toast.fail('获取定位失败,请稍后再试')
+             this.$toast.fail('获取定位失败,请稍后再试')
           }
         },
         {
@@ -643,7 +642,7 @@ export default {
     enableLocation() {
       if (this.locationPermission === 'denied') {
         // 用户之前拒绝了权限，引导用户手动开启
-        this.$toast && this.$toast('请在浏览器设置中开启定位权限')
+         this.$toast('请在浏览器设置中开启定位权限')
 
         // 在安卓内嵌环境下，尝试调用原生方法
         if (window.AndroidInterface && window.AndroidInterface.openLocationSettings) {

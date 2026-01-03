@@ -32,64 +32,45 @@ export default {
   data() {
     return {
       map: null,
-      routeDistance: '',
-      routeTime: '',
       showLocationTip: false,
-      locationPermission: 'prompt',
+      locationPermission: '',
       startPoint: null,
       endPoint: null,
       hasPlanned: false,
-      overlaysNum: 0,
       routeType: 'driving' // driving|riding|walking
     }
   },
   async mounted() {
     setTimeout(() => {
       this.initMap()
-      this.checkLocationPermission()
+      // this.checkLocationPermission()
     }, 300)
   },
   methods: {
     // 禁用覆盖物点击后弹出信息
     suppressOverlayClick(overlay) {
       try {
-        if (!overlay || !overlay.addEventListener) return
         const handler = (e) => {
           try { this.map && this.map.closeInfoWindow && this.map.closeInfoWindow() } catch (e2) {}
-          if (e && e.domEvent && e.domEvent.stopPropagation) e.domEvent.stopPropagation()
+          e.domEvent.stopPropagation()
           return false
         }
         overlay.addEventListener('click', handler)
       } catch (e) { }
     },
-
-
     // 从URL读取终点经纬度（不做经纬度顺序纠正）
     parseDestinationFromUrl() {
-      try {
-        if (!window.BMap) return
-        const q = this.$route && this.$route.query ? this.$route.query : {}
-        const lat = parseFloat(q.lat || q.latitude || q.pathLat)
-        const lng = parseFloat(q.lng || q.longitude || q.pathLng)
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
-        try {
-          const [bdLng, bdLat] = gcj02tobd09(lng, lat)
-          this.endPoint = new window.BMap.Point(bdLng, bdLat)
-        } catch (e2) {
-          this.endPoint = new window.BMap.Point(lng, lat)
-        }
-        this.locationPoint = this.endPoint
-        this.endLocationText = '目的地'
-        try { if (this.map) this.map.panTo(this.endPoint) } catch (e) {}
-      } catch (e) { /* ignore */ }
+      const { lat, lng} = this.$route.query
+      const [bdLng, bdLat] = gcj02tobd09(lng, lat)
+      this.endPoint = new window.BMap.Point(bdLng, bdLat)
+      this.locationPoint = this.endPoint
+      this.map.panTo(this.endPoint)
     },
 
     // 解析路线类型：type=0(驾车) 1(骑行) 2(步行)；默认驾车
     parseRouteTypeFromUrl() {
       try {
-        const q = this.$route && this.$route.query ? this.$route.query : {}
-        const tRaw = q.type != null ? String(q.type).trim() : ''
-        let t = parseInt(tRaw, 10)
+        let t = Number(this.$route.query.type)
         if (!Number.isFinite(t)) t = 0
         if (t === 0) this.routeType = 'driving'
         else if (t === 1) this.routeType = 'riding'
@@ -99,30 +80,21 @@ export default {
         this.routeType = 'driving'
       }
     },
-
-
     // 根据URL中的终点经纬度，使用当前位置作为起点进行路径规划
     startNavigation() {
       if (this.hasPlanned) return
       // 解析终点坐标
-      if (!this.endPoint) {
-        this.parseDestinationFromUrl()
-        if (!this.endPoint) return this.$toast && this.$toast('未提供目的地坐标')
-      }
-
+      this.parseDestinationFromUrl()
       // 先将视野移动到终点以便用户有反馈
-      try { this.map.centerAndZoom(this.endPoint, 16) } catch (e) {}
-
+      this.map.centerAndZoom(this.endPoint, 16)
       // 写死的起点：与默认"我的位置"一致，方便视觉一致
       const fallbackStartPoint = new window.BMap.Point(120.170700, 30.257069)
-
       // 超时保护：若定位迟迟无结果，则使用写死起点进行模拟规划
       const guardTimer = setTimeout(() => {
         if (!this.hasPlanned) {
           this.startPoint = fallbackStartPoint
           this.createDirectRoute(this.startPoint, this.endPoint)
           this.hasPlanned = true
-          this.$toast && this.$toast('已使用写死起点模拟路径规划')
         }
       }, 12000)
 
@@ -136,14 +108,13 @@ export default {
           // BMap.Geolocation 返回的坐标已经是 BD-09 格式，无需转换
           vm.startPoint = r.point
           vm.createDirectRoute(vm.startPoint, vm.endPoint)
-          // 自适应视野
-          try { vm.map.setViewport([vm.startPoint, vm.endPoint]) } catch (e) {}
+          vm.map.setViewport([vm.startPoint, vm.endPoint])
           vm.hasPlanned = true
         } else {
           // 定位失败，使用写死起点
           vm.startPoint = fallbackStartPoint
           vm.createDirectRoute(vm.startPoint, vm.endPoint)
-          try { vm.map.setViewport([vm.startPoint, vm.endPoint]) } catch (e) {}
+          vm.map.setViewport([vm.startPoint, vm.endPoint])
           vm.hasPlanned = true
         }
       })
@@ -243,33 +214,15 @@ export default {
     // 设置自定义标记的回调函数
     setCustomMarkersCallback(routeInstance) {
       routeInstance.setMarkersSetCallback((pois) => {
-        try {
-          if (pois && pois.length >= 2) {
-            const { startIconImage, endIconImage } = this.createCustomMarkers()
-
-            // 处理起点标记
-            if (pois[0] && pois[0].marker) {
-              pois[0].marker.setIcon(startIconImage)
-              this.addLabelIcon(pois[0].point, '起点', tipIcon)
-              // 禁用点击展示信息
-              this.suppressOverlayClick(pois[0].marker)
-            }
-
-            // 处理终点标记
-            if (pois[pois.length - 1] && pois[pois.length - 1].marker) {
-              pois[pois.length - 1].marker.setIcon(endIconImage)
-              this.addLabelIcon(pois[pois.length - 1].point, '终点', tipIcon)
-              // 禁用点击展示信息
-              this.suppressOverlayClick(pois[pois.length - 1].marker)
-            }
-          }
-        } catch (e) {
-          console.error('设置自定义标记失败:', e)
-        }
+        const { startIconImage, endIconImage } = this.createCustomMarkers()
+        pois[0].marker.setIcon(startIconImage)
+        this.addLabelIcon(pois[0].point, '起点', tipIcon)
+        this.suppressOverlayClick(pois[0].marker)
+        pois[pois.length - 1].marker.setIcon(endIconImage)
+        this.addLabelIcon(pois[pois.length - 1].point, '终点', tipIcon)
+        this.suppressOverlayClick(pois[pois.length - 1].marker)
       })
     },
-
-
     // 添加标签图标的辅助函数
     addLabelIcon(point, text, iconUrl) {
       try {
@@ -307,18 +260,13 @@ export default {
         console.error('添加标签图标失败:', e)
       }
     },
-
-
     // 创建两点之间的直接路径规划
     createDirectRoute(startPoint, endPoint) {
-      this.createRouteStage(startPoint, endPoint, '路径规划', () => {
-        // 路径规划完成，设置地图视野包含起点和终点
-        try { this.map.setViewport([startPoint, endPoint]) } catch (e) {}
-      })
+      this.createRouteStage(startPoint, endPoint)
     },
 
     // 创建路线阶段
-    createRouteStage(fromPoint, toPoint, stageName, onComplete, onFail) {
+    createRouteStage(startPoint, endPoint ) {
       let that = this
       try {
         const RouteClass = this.routeType === 'riding'
@@ -328,7 +276,7 @@ export default {
             : (window.BMap && window.BMap.DrivingRoute)
 
         if (!RouteClass) {
-          this.$toast && this.$toast('路线服务未就绪')
+           this.$toast('路线服务未就绪')
           return
         }
 
@@ -338,37 +286,23 @@ export default {
 
         // 设置自定义标记回调
         this.setCustomMarkersCallback(inst)
-        // 清空并禁止路线信息弹窗
-        try { inst.setInfoHtmlSetCallback && inst.setInfoHtmlSetCallback(() => '') } catch (e) {}
 
-        inst.search(fromPoint, toPoint)
+        inst.search(startPoint, endPoint)
         inst.setSearchCompleteCallback((rs) => {
           const ok = inst.getStatus && inst.getStatus() === window.BMAP_STATUS_SUCCESS && rs && rs.getPlan && rs.getPlan(0)
-          if (ok) onComplete && onComplete()
-          else if (onFail) onFail(rs)
-          else this.$toast && this.$toast.fail(`${stageName}失败`)
+          if (ok) {
+            this.map.setViewport([startPoint, endPoint])
+          } else {
+            this.$toast.fail(`路径规划失败`)
+          }
         })
       } catch (e) {
-        this.$toast && this.$toast.fail('路线规划失败')
+         this.$toast.fail('路线规划失败')
       }
     },
-
-    // 坐标转换：BD09转GCJ02
-    bd09ToGcj02(bdLng, bdLat) {
-      const x = bdLng - 0.0065
-      const y = bdLat - 0.006
-      const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * Math.PI)
-      const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * Math.PI)
-      const gcjLng = z * Math.cos(theta)
-      const gcjLat = z * Math.sin(theta)
-      return { lng: gcjLng, lat: gcjLat }
-    },
-
     initMap() {
       try {
-        // 检查BMap API是否完全加载
         if (!window.BMap || !window.BMap.Map) {
-          console.error('BMap API 未完全加载')
           setTimeout(() => {
             this.initMap()
           }, 500)
@@ -454,45 +388,25 @@ export default {
           'stylers': {
             'visibility': 'off'
           }
-        }]
+        }] 
 
-        try {
-          this.map.setMapStyleV2({
-            styleJson: mapStyle
-          })
-        } catch (styleError) {
-          // 静默处理样式应用失败
-        }
-
-        // 启用各种缩放功能
-        this.map.enableScrollWheelZoom(true) // 滚轮缩放
-        this.map.enableDoubleClickZoom(false) // 禁用双击缩放
-        this.map.enablePinchToZoom(false) // 禁用移动端双指缩放
-
-        // 地图初始化完成后再读取URL并规划路径（确保map已就绪）
-        this.parseDestinationFromUrl()
+        this.map.setMapStyleV2({
+          styleJson: mapStyle
+        })
         this.parseRouteTypeFromUrl()
         this.startNavigation()
       } catch (error) {
-        this.$toast && this.$toast.fail('地图初始化失败')
+         this.$toast.fail('地图初始化失败')
       }
     },
     locateToCurrent() {
-      try { if (window.AndroidInterface && typeof window.AndroidInterface.showFullAdFromWeb === 'function') { window.AndroidInterface.showFullAdFromWeb() } } catch (e) {}
-
-      if (!this.map) {
-        this.$toast && this.$toast.fail('地图未初始化')
-        return
-      }
-
+      try { window.AndroidInterface.showFullAdFromWeb() } catch (e) {}
       // 检查定位权限
       this.checkLocationPermission()
-
       const geolocation = new window.BMap.Geolocation()
       const vm = this
       geolocation.getCurrentPosition(function(r){
         if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          // BMap.Geolocation 返回的坐标已经是 BD-09 格式，无需转换
           vm.map.panTo(r.point)
           vm.locationPoint = r.point
           vm.startPoint = r.point
@@ -510,11 +424,7 @@ export default {
     },
     // 检查定位权限
     checkLocationPermission() {
-      if (!navigator.permissions) {
-        // 浏览器不支持权限API，直接返回
-        return
-      }
-
+      if (!navigator.permissions) return
       navigator.permissions.query({ name: 'geolocation' }).then((result) => {
         this.locationPermission = result.state
         if (result.state === 'denied') {
@@ -530,16 +440,13 @@ export default {
 
     enableLocation() {
       if (this.locationPermission === 'denied') {
-        // 用户之前拒绝了权限，引导用户手动开启
-        this.$toast && this.$toast('请在浏览器设置中开启定位权限')
+      // 用户之前拒绝了权限，引导用户手动开启
+        this.$toast('请在浏览器设置中开启定位权限')
 
-        // 在安卓内嵌环境下，尝试调用原生方法
-        if (window.AndroidInterface && window.AndroidInterface.openLocationSettings) {
-          try {
-            window.AndroidInterface.openLocationSettings()
-          } catch (e) {
-            // 静默处理错误
-          }
+      // 在安卓内嵌环境下，尝试调用原生方法
+        try {
+          window.AndroidInterface.openLocationSettings()
+        } catch (e) {
         }
       } else {
         // 重新尝试获取定位
@@ -590,8 +497,6 @@ export default {
 .tip-icon { width: 16px; height: 16px; background: #FF4D4F; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
 .tip-text { font-size: 13px; color: #E22A2A; font-weight: 600; }
 .tip-button { background: #FF4835; color: #fff; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
-
-
 </style>
 
 

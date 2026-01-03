@@ -1,18 +1,14 @@
 <template>
   <div class="mobile-container">
-    <!-- <LogPanel ref="logPanel" /> -->
-
-    <!-- 地图容器（使用 vue-baidu-map 组件） -->
     <baidu-map
       class="map-container"
       :center="mapCenter"
-      :zoom="defaultZoom"
-      :scroll-wheel-zoom="true"
+      :zoom="15"
       @ready="onMapReady"
     />
 
     <!-- 缩放控制组件 -->
-    <ZoomControl :map="map" @zoom-change="handleZoomChange" />
+    <ZoomControl :map="map" />
 
     <!-- 定位按钮 -->
     <LocateButton @locate="locateToCurrent" />
@@ -93,14 +89,6 @@ import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 import LocationTipBar from '@/components/LocationTipBar.vue'
 import ZoomControl from '@/components/ZoomControl.vue'
 import LocateButton from '@/components/LocateButton.vue'
-// import LogPanel from '@/components/LogPanel.vue'
-
-// 常量配置
-const MAP_CONFIG = {
-  DEFAULT_CENTER: { lng: 116.391, lat: 39.906217 },
-  DEFAULT_ZOOM: 15,
-  LOCATION_ZOOM: 16,
-}
 
 const LOC_STORAGE_KEY = 'speedcruise_last_location'
 
@@ -111,23 +99,19 @@ export default {
     return {
       map: null,
       showLocationTip: false,
-      locationPermission: 'prompt',
+      locationPermission: '',
       locationPoint: null,
       prefetchedLocation: null,
       isCenterInitialized: false,
       currentMarker: null,
-      mapCenter: { lng: MAP_CONFIG.DEFAULT_CENTER.lng, lat: MAP_CONFIG.DEFAULT_CENTER.lat },
-      defaultZoom: MAP_CONFIG.DEFAULT_ZOOM,
+      mapCenter: {},
       // 防抖相关
       isLocating: false, // 防止重复定位
-      currentSpeed: 0.0,
-      maxSpeed: 100,
       soundEnabled: false,
       // 限速设置相关
       speedLimit: 1,
       showSpeedLimitDialog: false,
       tempSpeedLimit: 1,
-
     }
   },
   async mounted() {
@@ -135,21 +119,19 @@ export default {
   },
   created() {
     try {
-      const lat = parseFloat(this.$route.query.lat);
-      const lng = parseFloat(this.$route.query.lng);
-      // 直接使用URL中的百度坐标系经纬度
+      const {lat, lng } = this.$route.query
       this.prefetchedLocation = { lng, lat }
       this.mapCenter = { lng, lat }
 
-      if (navigator && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function') {
+      if (navigator.geolocation) {
         const vm = this
         navigator.geolocation.getCurrentPosition(function(pos) {
           try {
-            const lng = pos && pos.coords && pos.coords.longitude
-            const lat = pos && pos.coords && pos.coords.latitude
+            const lng = pos.coords.longitude
+            const lat = pos.coords.latitude
             if (lng && lat) {
               vm.prefetchedLocation = { lng, lat }
-              try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng, lat, ts: Date.now() })) } catch (_) {}
+              localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng, lat, ts: Date.now() }))
             }
           } catch (e) {}
         }, function(err) {
@@ -161,39 +143,19 @@ export default {
   },
 
   methods: {
-        // 缩放功能（delta=+1 放大；-1 缩小）
-    zoomIn(delta) {
-      if (!this.map || (delta !== 1 && delta !== -1)) return
-      const currentZoom = this.map.getZoom()
-      const target = delta === 1
-        ? Math.min(currentZoom + 1, 19) // 最大级别
-        : Math.max(currentZoom - 1, 3)  // 最小级别
-      if (target !== currentZoom) this.map.setZoom(target)
-    },
-
-    // 处理缩放变化事件
-    handleZoomChange(zoomInfo) {
-      console.log('缩放级别变化:', zoomInfo)
-      // 可以在这里添加额外的逻辑，比如记录用户操作等
-    },
-    // 地图组件就绪回调
     onMapReady({ BMap, map }) {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
-        // 基础能力
-        try { this.map.enableScrollWheelZoom(true) } catch (e) {}
-        // 应用个性化地图样式
-        // this.applyMapStyle()
         // 居中：优先使用预取定位；否则等待静默定位后再居中，避免先居中到默认位置造成跳动
-        if (this.prefetchedLocation) {
-          const p = new BMap.Point(this.prefetchedLocation.lng, this.prefetchedLocation.lat)
-          this.map.centerAndZoom(p, MAP_CONFIG.DEFAULT_ZOOM)
-          this.locationPoint = p
-          this.updateCurrentMarker(p)
-          this.showLocationTip = false
-          this.isCenterInitialized = true
-        }
+      if (this.prefetchedLocation) {
+        const p = new BMap.Point(this.prefetchedLocation.lng, this.prefetchedLocation.lat)
+        this.map.centerAndZoom(p, MAP_CONFIG.DEFAULT_ZOOM)
+        this.locationPoint = p
+        this.updateCurrentMarker(p)
+        this.showLocationTip = false
+        this.isCenterInitialized = true
+      } 
       } catch (e) {
       }
     },
@@ -201,16 +163,14 @@ export default {
     locateToCurrent() {
       if (this.isLocating) return // 防抖处理
       this.isLocating = true
-
       try {
-        // 直接使用created钩子中已存储的prefetchedLocation
           const { lng, lat } = this.prefetchedLocation;
           const point = new window.BMap.Point(lng, lat);
           const center = this.map.getCenter();
           const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: lng, lat: lat });
           
           if (!this.isCenterInitialized) {
-            this.map.centerAndZoom(point, MAP_CONFIG.LOCATION_ZOOM);
+            this.map.centerAndZoom(point, 16);
             this.isCenterInitialized = true;
           } else if (dist > 50) {
             this.map.panTo(point);
@@ -285,33 +245,27 @@ export default {
     cancelSpeedLimit() {
       this.showSpeedLimitDialog = false;
     },
-
-        // 验证限速输入
-        validateSpeedInput() {
-          // 确保值最多有两位小数
-          if (this.tempSpeedLimit && !isNaN(this.tempSpeedLimit)) {
-            const num = parseFloat(this.tempSpeedLimit);
-            this.tempSpeedLimit = Math.round(num * 100) / 100;
-          }
-        },
-
+    // 验证限速输入
+    validateSpeedInput() {
+      // 确保值最多有两位小数
+      if (this.tempSpeedLimit && !isNaN(this.tempSpeedLimit)) {
+        const num = parseFloat(this.tempSpeedLimit);
+        this.tempSpeedLimit = Math.round(num * 100) / 100;
+      }
+    },
         // 距离计算（米）- 使用Haversine公式
     distanceMeters(a, b) {
       try {
         if (!a || !b) return 0
-
         const lngLatToRad = (d) => d * Math.PI / 180
         const R = 6371000 // 地球半径（米）
-
         const lat1 = lngLatToRad(a.lat || a.getLat())
         const lat2 = lngLatToRad(b.lat || b.getLat())
         const dLat = lat2 - lat1
         const dLng = lngLatToRad((b.lng || b.getLng()) - (a.lng || a.getLng()))
-
         const s = 2 * Math.asin(Math.sqrt(
           Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2
         ))
-
         return R * s
       } catch (e) {
         console.warn('距离计算失败:', e)
@@ -322,8 +276,6 @@ export default {
     // 更新/创建当前用户位置图标
     updateCurrentMarker(point) {
       try {
-        if (!this.map || !point) return
-
         // 调整用户图标尺寸，使其更自然（宽高比约为1:1.2）
         const size = new window.BMap.Size(32, 38)
         const icon = new window.BMap.Icon(userIconImg, size, {
@@ -365,7 +317,7 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 10;
+  z-index: 1;
 }
 
 
