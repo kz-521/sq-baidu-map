@@ -16,7 +16,6 @@ sq-baidu-map/
   │  ├─ main.js                  # 入口文件
   │  ├─ router/index.js          # 路由定义
   │  ├─ utils/
-  │  │  ├─ loadBMap.js          # 异步加载百度地图脚本
   │  │  └─ coord.js             # 坐标转换工具
   │  ├─ views/
   │  │  ├─ BMap/index.vue       # 附近驿站与导航
@@ -70,25 +69,6 @@ npm run build:stage      # 自定义 staging 模式
 ```
 
 ## 百度地图 AK 配置
-
-前端地图加载由 `src/utils/loadBMap.js` 负责，示例代码中在各页面里直接传入了 AK：
-
-- `BMap/index.vue`、`HeatMap/index.vue`、`RoutePlan/index.vue`、`SingleRoutePlan/index.vue` 中均有：
-  ```js
-  await loadBMap('JZ7exm3yUlWSewreBHs0celsfohscaod')
-  ```
-
-如需替换，请在上述页面中改为你的百度地图 AK。建议做法：
-- 通过环境变量注入，在运行时读取并传递给 `loadBMap(ak)`；
-- 或建立统一的配置文件并在页面中引用，避免硬编码。
-
-后端 `server/server.js` 用于调用百度交通 API，目前写死了一个示例 AK：
-
-```js
-ak: 'GH8I02NuvL9GIvvpV0CaXD9EyTmaxfl7'
-```
-
-将其替换为你自己的 AK，或改造为读取环境变量 `process.env.BAIDU_AK`。
 
 AK 申请地址见百度地图开放平台文档（登录控制台创建应用获取 AK）。
 

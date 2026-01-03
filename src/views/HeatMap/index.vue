@@ -86,7 +86,6 @@ export default {
       // 防抖相关
       isLocating: false, // 防止重复定位
       // 首次热力图初始化标记，防止移动触发重复初始化
-      hasInitializedHeatmap: false,
     }
   },
   async mounted() {
@@ -135,7 +134,6 @@ export default {
           this.showLocationTip = false
           this.isCenterInitialized = true
         }
-        // return
         this.setupMapEventListeners()
       } catch (e) {
       }
@@ -144,8 +142,6 @@ export default {
     // 设置地图事件监听器
     setupMapEventListeners() {
       const onTilesLoaded = () => {
-        if (this.hasInitializedHeatmap) return
-        this.hasInitializedHeatmap = true
         this.map.removeEventListener('tilesloaded', onTilesLoaded)
         this.mapLoaded = true
         this.initializeHeatmap()
