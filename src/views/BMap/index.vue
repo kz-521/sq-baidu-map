@@ -7,7 +7,7 @@
           <span class="title">{{ headerTitle }}</span>
         </div>
         <div class="right-section">
-          <img src="@/assets/Frame.png" alt="Frame" class="frame-icon" @click="locateToCurrent">
+          <img src="@/assets/Frame.png" alt="定位到当前位置" class="frame-icon" @click="locateToCurrent">
         </div>
       </div>
       <div v-else>
@@ -96,20 +96,20 @@
         </div>
       </div>
       <button class="start-navigation-btn" @click="startNativeNavigation">
-        <img src="@/assets/white.png" alt="导航图标" class="nav-icon">
+        <img src="@/assets/white.png" alt="开始导航" class="nav-icon">
         <span style="font-size: 12px;">开始导航</span>
       </button>
     </div>
 
     <!-- 固定定位元素：附近站点按钮（根据 isFlash 或 isGas 切换文案和功能） -->
     <div v-if="!isGoing" class="fixed-poi-button" @click="handleNearbySearch">
-      <img src="@/assets/Frame (1).png" alt="附近" class="poi-icon">
+      <img src="@/assets/Frame (1).png" alt="查看附近站点" class="poi-icon">
       <span class="poi-text">{{ headerTitle }}</span>
     </div>
 
     <!-- 固定定位元素：定位按钮 -->
     <div v-if="!isGoing" class="fixed-locate-button" @click="locateToCurrent">
-      <img src="@/assets/position.png" alt="定位" class="loc-icon">
+      <img src="@/assets/position.png" alt="定位到当前位置" class="loc-icon">
     </div>
 
     <!-- 定位提示条 -->

@@ -22,7 +22,7 @@
 
     <!-- 固定定位元素：定位按钮 -->
     <div class="fixed-locate-button" @click="locateToCurrent">
-      <img src="@/assets/position.png" alt="定位" class="loc-icon">
+      <img src="@/assets/position.png" alt="定位到当前位置" class="loc-icon">
     </div>
 
     <!-- 审图号信息 -->

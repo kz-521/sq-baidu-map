@@ -2,7 +2,7 @@
   <div class="zoom-control">
     <template v-if="showLayerButton">
       <div class="zoom-btn layer-btn" @click="toggleLayer">
-        <img src="@/assets/layer.png" alt="Layer" />
+        <img src="@/assets/layer.png" alt="切换地图图层" />
       </div>
       <div class="separator"></div>
     </template>

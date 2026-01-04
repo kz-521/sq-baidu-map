@@ -1,6 +1,6 @@
 <template>
   <div class="fixed-locate-button" @click="locate">
-    <img src="@/assets/position.png" alt="定位" class="loc-icon">
+    <img src="@/assets/position.png" alt="定位到当前位置" class="loc-icon">
   </div>
 </template>
 
