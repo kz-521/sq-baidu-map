@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed-locate-button" @click="handleClick">
+  <div class="fixed-locate-button" @click="locate">
     <img src="@/assets/position.png" alt="定位" class="loc-icon">
   </div>
 </template>
@@ -8,7 +8,7 @@
 export default {
   name: 'LocateButton',
   methods: {
-    handleClick() {
+    locate() {
       this.$emit('locate');
     }
   }
@@ -22,5 +22,5 @@ export default {
   background: #fff; border-radius: 2vw; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 1000;
 }
-.fixed-locate-button .loc-icon { width: 23px; height: 23px; }
+.loc-icon { width: 23px; height: 23px; }
 </style>

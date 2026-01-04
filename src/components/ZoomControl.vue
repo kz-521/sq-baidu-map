@@ -47,47 +47,10 @@ export default {
      * @param {Number} delta - 缩放变化量，1 表示放大，-1 表示缩小
      */
     zoomIn(delta) {
-      if (!this.map || (delta !== 1 && delta !== -1)) return
-      
       const currentZoom = this.map.getZoom()
-      const target = delta === 1
-        ? Math.min(currentZoom + 1, this.maxZoom)
-        : Math.max(currentZoom - 1, this.minZoom)
-      
-      if (target !== currentZoom) {
-        this.map.setZoom(target)
-        this.$emit('zoom-change', {
-          oldZoom: currentZoom,
-          newZoom: target,
-          delta: delta
-        })
-      }
+      const target = delta === 1 ? Math.min(currentZoom + 1, this.maxZoom) : Math.max(currentZoom - 1, this.minZoom)
+      this.map.setZoom(target)
     },
-    
-    /**
-     * 设置缩放级别
-     * @param {Number} level - 目标缩放级别
-     */
-    setZoom(level) {
-      if (!this.map || typeof level !== 'number') return
-      
-      const targetLevel = Math.max(this.minZoom, Math.min(level, this.maxZoom))
-      this.map.setZoom(targetLevel)
-      this.$emit('zoom-change', {
-        oldZoom: this.map.getZoom(),
-        newZoom: targetLevel,
-        delta: targetLevel - this.map.getZoom()
-      })
-    },
-    
-    /**
-     * 获取当前缩放级别
-     * @returns {Number} 当前缩放级别
-     */
-    getCurrentZoom() {
-      return this.map ? this.map.getZoom() : null
-    },
-
     /**
      * 切换图层
      */

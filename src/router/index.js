@@ -20,51 +20,43 @@ export const constantRoutes = [
     path: '/BMap/index',
     name: 'BMap',
     component: () => import('@/views/BMap/index'),
-    meta: { title: 'BMap', icon: 'map' }
   },
   {
     path: '/HeatMap/index',
     name: 'HeatMap',
     component: () => import('@/views/HeatMap/index'),
-    meta: { title: 'HeatMap', icon: 'map' }
   },
   {
     path: '/RoutePlan/index',
     name: 'RoutePlan',
     component: () => import('@/views/RoutePlan/index'),
-    meta: { title: 'RoutePlan', icon: 'map' }
   },
   {
     path: '/SingleRoutePlan/index',
     name: 'SingleRoutePlan',
     component: () => import('@/views/SingleRoutePlan/index'),
-    meta: { title: 'SingleRoutePlan', icon: 'map' }
   },
   {
     path: '/QuickRoute/index',
     name: 'QuickRoute',
     component: () => import('@/views/QuickRoute/index'),
-    meta: { title: 'QuickRoute', icon: 'map' }
   },
   {
     path: '/SimpleMap/index',
     name: 'SimpleMap',
     component: () => import('@/views/SimpleMap/index'),
-    meta: { title: 'SimpleMap', icon: 'map' }
   },
   {
     path: '/RealTimeTraffic/index',
     name: 'RealTimeTraffic',
     component: () => import('@/views/RealTimeTraffic/index'),
-    meta: { title: '实时路况', icon: 'map' }
   },
   {
     path: '/SpeedCruise/index',
     name: 'SpeedCruise',
     component: () => import('@/views/SpeedCruise/index'),
-    meta: { title: '测速巡航', icon: 'map' }
   },
-  { path: '*', redirect: '/404', hidden: true }
+  { path: '*', redirect: '/404'}
 ]
 
 const createRouter = () => new Router({
@@ -76,7 +68,7 @@ const createRouter = () => new Router({
 const router = createRouter()
 export function resetRouter() {
   const newRouter = createRouter()
-  router.matcher = newRouter.matcher // reset router
+  router.matcher = newRouter.matcher
 }
 
 export default router

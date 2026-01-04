@@ -3,7 +3,7 @@ import Es6Promise from 'es6-promise'
 require('es6-promise').polyfill()
 Es6Promise.polyfill()
 import Vue from 'vue'
-import axios from 'axios'
+// import axios from 'axios'
 
 import 'normalize.css/normalize.css' // A modern alternative to CSS resets
 

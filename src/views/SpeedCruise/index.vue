@@ -296,11 +296,6 @@ export default {
   }
 }
 </script>
-
-<style scoped>
-
-</style>
-
 <style lang="scss" scoped>
 .mobile-container {
   width: 100%;
@@ -319,9 +314,6 @@ export default {
   bottom: 0;
   z-index: 1;
 }
-
-
-
 /* 定位提示条 */
 .location-tip-bar {
   position: fixed !important; bottom: 5vh; left: 0 !important; right: 0 !important; width: 100%; height: 4.63vh; background: #FFE2E0;
