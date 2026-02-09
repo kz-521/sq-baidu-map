@@ -21,6 +21,7 @@ sq-baidu-map/
   │  │  ├─ BMap/index.vue       # 附近驿站与导航
   │  │  ├─ HeatMap/index.vue    # 热力图（完整）
   │  │  ├─ SimpleMap/index.vue  # 热力图（简化）
+  │  │  ├─ UrlMap/index.vue     # 空白地图页（中心点由 URL/Native 传入）
   │  │  ├─ RoutePlan/index.vue  # 路径规划（含取货点）
   │  │  └─ SingleRoutePlan/index.vue # 单段路径规划（驾车/骑行/步行）
   │  └─ components/MapLicenseInfo.vue # 审图号信息
@@ -101,6 +102,21 @@ AK 申请地址见百度地图开放平台文档（登录控制台创建应用�
     ```
 - SimpleMap（热力图简化示例）
   - 路由：`/SimpleMap/index`
+- UrlMap（根据经纬度展示的空白地图页，可供外部 H5 / Native 调用）
+  - 路由：`/UrlMap/index`
+  - URL 参数：
+    - `lat`：地图中心纬度
+    - `lng`：地图中心经度
+    - `isJump`：是否显示“跳转”按钮（`true`/`false`，默认不显示）
+    - `showCurrent`：是否显示“定位到当前中心”按钮（`true`/`false`，默认不显示）
+  - 说明：
+    - 地图默认以 `lat`/`lng` 为中心，并在该点添加 Marker；
+    - 当 `isJump=true` 时，右下角会出现“跳转”按钮，点击后会将中心切换到示例坐标 `lng=120.119, lat=30.274`；
+    - 当 `showCurrent=true` 时，右下角会出现“定位”按钮，点击后将视角拉回当前中心点。
+  - 示例：
+    ```
+    http://localhost:8080/#/UrlMap/index?lat=30.274&lng=120.119&isJump=true&showCurrent=true
+    ```
 
 说明：页面内部对经纬度常见颠倒情况做了纠正；默认会尝试浏览器定位，失败时使用内置缺省点。
 

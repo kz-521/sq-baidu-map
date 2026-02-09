@@ -47,6 +47,11 @@ export const constantRoutes = [
     component: () => import('@/views/SimpleMap/index'),
   },
   {
+    path: '/UrlMap/index',
+    name: 'UrlMap',
+    component: () => import('@/views/UrlMap/index'),
+  },
+  {
     path: '/RealTimeTraffic/index',
     name: 'RealTimeTraffic',
     component: () => import('@/views/RealTimeTraffic/index'),
