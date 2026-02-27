@@ -93,15 +93,6 @@ export default {
   },
   created() {
     try {
-      // 优先读取本地缓存定位，作为默认打开时的中心
-        // const cached = localStorage.getItem(LOC_STORAGE_KEY)
-        const cached = null
-        if (cached) {
-          const obj = JSON.parse(cached)
-          if (obj && obj.lng && obj.lat) {
-            this.prefetchedLocation = { lng: obj.lng, lat: obj.lat }
-          }
-        }
       if (navigator.geolocation) {
         const vm = this
         navigator.geolocation.getCurrentPosition(function(pos) {

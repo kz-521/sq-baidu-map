@@ -213,3 +213,7 @@ https://hamster-chat.dns.army/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&t
 实时交通 https://hamster-chat.dns.army/#/RealTimeTraffic/index
 速度巡航 https://earn-h5.shengqu99.com/#/SpeedCruise/index?lat=30.276658&lng=120.015657
 速度巡航 https://hamster-chat.dns.army/#/SpeedCruise/index?lat=30.276658&lng=120.015657
+
+单定位
+https://earn-h5.shengqu99.com/#/SimpleMap/index
+https://hamster-chat.dns.army/#/SimpleMap/index
