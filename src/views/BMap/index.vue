@@ -11,49 +11,43 @@
         </div>
       </div>
       <div v-else>
-      <div class="search-header-content">
-        <div class="left-icon" @click="handleBack">
-          <img src="@/assets/back.png" alt="返回" class="frame-icon">
+        <div class="search-header-content">
+          <div class="left-icon" @click="handleBack">
+            <img src="@/assets/back.png" alt="返回" class="frame-icon">
+          </div>
+          <div class="search-adr">搜索位置</div>
         </div>
-        <div class="search-adr">搜索位置</div>
-      </div>
 
-      <!-- 路径规划中间 -->
-      <div class="route-middle">
-        <div class="route-locations">
-          <div class="location-item start-location">
-            <div class="location-dot start-dot"></div>
-            <div class="location-text" style="width:86%">{{ startLocationText }}</div>
-          </div>
-          <div class="location-divider"></div>
-          <div class="location-item end-location">
-            <div class="location-dot end-dot"></div>
-            <div class="location-text" style="width:86%">{{ endLocationText }}</div>
-          </div>
-          <div class="swap-button" @click="swapLocations">
-            <div class="swap-icon">
-              <div class="swap-arrow up"></div>
-              <div class="swap-line"></div>
-              <div class="swap-arrow down"></div>
+        <!-- 路径规划中间 -->
+        <div class="route-middle">
+          <div class="route-locations">
+            <div class="location-item start-location">
+              <div class="location-dot start-dot"></div>
+              <div class="location-text" style="width:86%">{{ startLocationText }}</div>
+            </div>
+            <div class="location-divider"></div>
+            <div class="location-item end-location">
+              <div class="location-dot end-dot"></div>
+              <div class="location-text" style="width:86%">{{ endLocationText }}</div>
+            </div>
+            <div class="swap-button" @click="swapLocations">
+              <div class="swap-icon">
+                <div class="swap-arrow up"></div>
+                <div class="swap-line"></div>
+                <div class="swap-arrow down"></div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
     </div>
 
     <!-- 搜索框 -->
     <div v-if="!isGoing" class="search-section">
       <div class="search-box">
         <i class="el-icon-search search-icon" />
-        <input
-          id="searchInput"
-          v-model="searchText"
-          type="text"
-          class="search-input"
-          placeholder="请输入详细区域/位置"
-          @keyup.enter="searchLocation"
-        >
+        <input id="searchInput" v-model="searchText" type="text" class="search-input" placeholder="请输入详细区域/位置"
+          @keyup.enter="searchLocation">
       </div>
     </div>
     <div v-else class="to-address">
@@ -61,12 +55,7 @@
     </div>
 
     <!-- 地图容器（使用 vue-baidu-map 组件） -->
-    <baidu-map
-      class="map-container"
-      :center="mapCenter"
-      :zoom="defaultZoom"
-      @ready="onMapReady"
-    />
+    <baidu-map class="map-container" :center="mapCenter" :zoom="defaultZoom" @ready="onMapReady" />
 
     <!-- 审图号信息 -->
     <MapLicenseInfo />
@@ -121,8 +110,8 @@
       <button class="tip-button" @click="enableLocation">开启</button>
     </div>
 
-     <!-- 日志面板组件 -->
-    <LogPanel ref="logPanel" />
+    <!-- 日志面板组件 -->
+    <!-- <LogPanel ref="logPanel" /> -->
   </div>
 </template>
 
@@ -133,9 +122,13 @@ import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 import LogPanel from '@/components/LogPanel.vue'
 import { wgs84tobd09 } from '@/utils/coord'
 
+// 【优化】提取默认位置常量
+const DEFAULT_LOCATION = { lng: 120.019, lat: 30.274 } // 杭州 EFC 中心
+const DEFAULT_ZOOM = 16
+
 export default {
   name: 'BMap',
-    components: { MapLicenseInfo, LogPanel },
+  components: { MapLicenseInfo, LogPanel },
   data() {
     return {
       isFlashMode: false,  // URL 参数控制：isFlash=1 时进入闪送模式，isGas=1 时进入燃气模式
@@ -170,7 +163,10 @@ export default {
       const q = this.$route.query   // isFlash=1 闪送模式（严格为 1）
       this.isFlashMode = q.isFlash == 1
       this.isGasMode = q.isGas == 1 // isGas=1 燃气模式（严格为 1）
-    } catch (e) {}
+    } catch (e) { 
+      // 静默处理：路由查询参数解析失败不影响页面加载
+      this.addLog('路由参数解析失败', 'warn')
+    }
   },
   watch: {
     '$route.query.isFlash'(val) {// 响应路由查询参数变更（避免组件复用时文案不更新）
@@ -188,7 +184,6 @@ export default {
     },
     // 数值与单位分离：距离
     routeDistanceValue() {
-      console.log('routeDistance:', this.routeDistance);
       if (!this.routeDistance) return '--'
       if (typeof this.routeDistance === 'string') {
         if (this.routeDistance.includes('公里')) {
@@ -205,7 +200,7 @@ export default {
     },
     routeDistanceUnit() {
       if (!this.routeDistance) return ''
-      if (/公里|千米/.test(this.routeDistance)) return 'km';
+      if (/公里 | 千米/.test(this.routeDistance)) return 'km';
       if (/米|m$/.test(this.routeDistance)) return 'm'; // 匹配以'm'结尾的情况
       return ''
     },
@@ -231,6 +226,28 @@ export default {
   async mounted() {
     this.checkLocationPermission()
   },
+  beforeDestroy() {
+    // 【优化】组件事件监听器清理，防止内存泄漏
+    window.removeEventListener('resize', this.updateSuggestionStyle)
+    
+    // 清理搜索建议相关的事件监听
+    const inputEl = document.getElementById('searchInput')
+    if (inputEl) {
+      inputEl.removeEventListener('focus', this.updateSuggestionStyle)
+      inputEl.removeEventListener('input', this.updateSuggestionStyle)
+    }
+    
+    // 清理地图相关监听器
+    if (this.map) {
+      this.map.removeEventListener('dragstart', this.blurInputHandler)
+      this.map.removeEventListener('dragging', this.blurInputHandler)
+      this.map.removeEventListener('zoomstart', this.blurInputHandler)
+      this.map.removeEventListener('zoomend', this.blurInputHandler)
+      this.map.removeEventListener('tilesloaded', this.onTilesLoadedHandler)
+    }
+    
+    this.addLog('组件已销毁，事件监听器已清理')
+  },
   methods: {
     // 添加日志方法
     addLog(message, type = 'info') {
@@ -238,11 +255,29 @@ export default {
         this.$refs.logPanel.addLog(message, type)
       }
     },
+    
+    // 模糊输入处理函数（用于事件监听器清理）
+    blurInputHandler() {
+      const inputEl = document.getElementById('searchInput')
+      if (inputEl && document.activeElement === inputEl) {
+        inputEl.blur()
+      }
+    },
+    
+    // tilesloaded 事件处理函数（用于事件监听器清理）
+    onTilesLoadedHandler() {
+      if (this.map) {
+        this.map.removeEventListener('tilesloaded', this.onTilesLoadedHandler)
+        this.initializeHeatmap()
+      }
+    },
+    
     // 地图组件就绪回调
     onMapReady({ BMap, map }) {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
+        this.addLog('地图初始化成功')
         
         // 地图交互时不弹起输入
         this.bindMapInteractionGuards()
@@ -257,23 +292,17 @@ export default {
           inputEl.addEventListener('input', this.updateSuggestionStyle)
         }
       } catch (error) {
+        this.addLog(`地图初始化失败：${error.message}`, 'error')
         this.$toast.fail('地图初始化失败')
       } 
       this.setupMapEventListeners()
     },
-    // 设置地图事件监听器
+    
     setupMapEventListeners() {
-      const onTilesLoaded = () => {
-        this.map.removeEventListener('tilesloaded', onTilesLoaded)
-        this.initializeHeatmap()
-      }
-      this.map.addEventListener('tilesloaded', onTilesLoaded)  // 当地图所有图块完成加载时触发此事件
+      this.map.addEventListener('tilesloaded', this.onTilesLoadedHandler)
     },
     initializeHeatmap() {
       this.getCurrLocation()
-      // this.getCurrentLocationSilently(() => {
-      //   const center = this.locationPoint || this.map.getCenter()
-      // })
     },
     // 在路径规划线条上添加方向箭头
     addDirectionalArrows(polyline) {
@@ -282,7 +311,7 @@ export default {
         
         // 检查 polyline 是否有 getPath 方法
         if (typeof polyline.getPath !== 'function') {
-          console.warn('polyline 没有 getPath 方法，跳过添加箭头')
+          this.addLog('polyline 没有 getPath 方法，跳过添加箭头', 'warn')
           return
         }
         
@@ -291,7 +320,7 @@ export default {
         if (!path || path.length < 2) return
 
         // 在路径上每隔一定距离添加箭头
-        const arrowSpacing = 600 // 每600米添加一个箭头，更密集
+        const arrowSpacing = 600 // 每 600 米添加一个箭头，更密集
         const totalDistance = this.map.getDistance(path[0], path[path.length - 1])
         const numArrows = Math.max(1, Math.floor(totalDistance / arrowSpacing))
 
@@ -307,7 +336,7 @@ export default {
               (point1.lat + point2.lat) / 2
             )
 
-            // 计算从point1到point2的方向向量
+            // 计算从 point1 到 point2 的方向向量
             const deltaLng = point2.lng - point1.lng
             const deltaLat = point2.lat - point1.lat
 
@@ -333,13 +362,13 @@ export default {
             // 计算角度（弧度转角度）
             let angle = Math.atan2(deltaLat, deltaLng) * 180 / Math.PI
 
-            // 标准化角度到0-360度范围
+            // 标准化角度到 0-360 度范围
             if (angle < 0) {
               angle += 360
             }
 
-            // BMap的箭头符号默认指向右侧(0度)，需要调整角度
-            // 由于BMap的坐标系和地理坐标系的差异，需要调整
+            // BMap 的箭头符号默认指向右侧 (0 度)，需要调整角度
+            // 由于 BMap 的坐标系和地理坐标系的差异，需要调整
             angle = 90 - angle
 
             // 创建白色箭头符号 - 调整尺寸和边框，让箭头更细更清晰
@@ -359,8 +388,8 @@ export default {
             this.map.addOverlay(arrowMarker)
           }
         }
-      } catch (e) {
-        console.error('添加方向箭头失败:', e)
+      } catch (error) {
+        this.addLog(`添加方向箭头失败：${error.message}`, 'error')
       }
     },
     // 统一设置路线样式并添加方向箭头
@@ -371,8 +400,8 @@ export default {
         if (polyline.setStrokeWeight) polyline.setStrokeWeight(8)
         if (polyline.setStrokeOpacity) polyline.setStrokeOpacity(1)
         this.addDirectionalArrows(polyline)
-      } catch (e) {
-        console.warn('设置路线样式失败:', e.message)
+      } catch (error) {
+        this.addLog(`设置路线样式失败：${error.message}`, 'warn')
       }
     },
     // 抽取的通用骑行路线规划
@@ -401,15 +430,17 @@ export default {
             this.routeTime = plan.getDuration(true)
           }
         } else {
+          this.addLog(`路径规划失败：${riding.getStatus()}`, 'error')
           this.$toast.fail('路径规划失败')
         }
       })
     },
-    // 调用手机原生导航（显示导航类型选择弹窗） // 仅调用安卓注入方法打开地图应用，不做其他逻辑
+    // 调用手机原生导航（仅调用安卓注入方法打开地图应用，不做其他逻辑）
     startNativeNavigation() {
       try {
         window.AndroidInterface.openMapApp()
-      } catch (e) {
+      } catch (error) {
+        this.addLog(`启动原生导航失败：${error.message}`, 'error')
         this.$toast.fail('启动导航失败')
       }
     },
@@ -419,57 +450,54 @@ export default {
       try {
         const inputEl = document.getElementById('searchInput')
         if (!this.map || !inputEl) return
-        const blurInput = () => {
-          if (document.activeElement === inputEl) {
-            inputEl.blur()
-          }
-        }
-        this.map.addEventListener('dragstart', blurInput)
-        this.map.addEventListener('dragging', blurInput)
-        this.map.addEventListener('zoomstart', blurInput)
-        this.map.addEventListener('zoomend', blurInput)
-      } catch (e) { /* ignore */ }
+        
+        this.map.addEventListener('dragstart', this.blurInputHandler)
+        this.map.addEventListener('dragging', this.blurInputHandler)
+        this.map.addEventListener('zoomstart', this.blurInputHandler)
+        this.map.addEventListener('zoomend', this.blurInputHandler)
+      } catch (error) { 
+        // 静默处理：地图交互守卫失败不影响核心功能
+        this.addLog(`地图交互守卫设置失败：${error.message}`, 'warn')
+      }
     },
     locateToCurrent() {
+      this.addLog('用户点击定位按钮')
+      
       // 点击定位时调用安卓注入方法
-      try { window.AndroidInterface.showFullAdFromWeb() } catch (e) {}
-      if (!navigator.geolocation) {
-        this.$toast.fail('浏览器不支持定位，使用默认位置')
-        const defaultPoint = new window.BMap.Point(120.019, 30.274)
-        this.map.panTo(defaultPoint)
-        this.locationPoint = defaultPoint
-        this.startPoint = defaultPoint
-        return
+      try { window.AndroidInterface.showFullAdFromWeb() } catch (error) {
+        this.addLog(`调用安卓接口失败：${error.message}`, 'warn')
       }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const point = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-          this.map.panTo(point)
-          this.locationPoint = point
-          this.startPoint = point
-          this.createOrUpdateUserMarker(point)
+      
+      // 【优化】使用通用定位方法
+      this.getCurrentPosition({
+        onSuccess: (bdPoint) => {
+          this.map.panTo(bdPoint)
+          this.locationPoint = bdPoint
+          this.startPoint = bdPoint
+          this.createOrUpdateUserMarker(bdPoint)
           this.showLocationTip = false
+          this.addLog('地图已更新到精确定位位置')
         },
-        (error) => {
-          console.error('获取位置失败:', error)
-          // 无论何种错误，回落到默认中心
-          const defaultPoint = new window.BMap.Point(120.019, 30.274)
+        onError: (error) => {
+          const defaultPoint = new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat)
           this.map.panTo(defaultPoint)
           this.locationPoint = defaultPoint
           this.startPoint = defaultPoint
           this.createOrUpdateUserMarker(defaultPoint)
-          // 根据错误类型显示提示
+          
           if (error.code === 1) {
             this.showLocationTip = true
             this.locationPermission = 'denied'
+            this.$toast.fail('定位权限被拒绝，请在浏览器设置中开启')
           } else if (error.code === 2) {
             this.showLocationTip = true
             this.locationPermission = 'unavailable'
+            this.$toast.fail('位置服务不可用')
           } else {
             this.$toast.fail('获取当前位置失败，使用默认位置')
           }
         }
-      )
+      })
     },
     initAutocomplete() {
       try {
@@ -487,8 +515,8 @@ export default {
           this.searchText = address
           this.$nextTick(() => this.searchLocation())
         })
-      } catch (e) {
-        console.error('Autocomplete 初始化失败:', e)
+      } catch (error) {
+        this.addLog(`Autocomplete 初始化失败：${error.message}`, 'error')
       }
     },
     updateSuggestionStyle() {
@@ -505,7 +533,8 @@ export default {
         sugEl.style.width = `${rect.width}px`
         sugEl.style.marginTop = '0px'
         sugEl.style.zIndex = '2000'
-      } catch (e) {
+      } catch (error) {
+        this.addLog(`更新建议样式失败：${error.message}`, 'warn')
       }
     },
     // 检查定位权限
@@ -518,7 +547,8 @@ export default {
         } else if (result.state === 'granted') {
           this.showLocationTip = false
         }
-      }).catch(() => {
+      }).catch((error) => {
+        this.addLog(`权限检查失败：${error.message}`, 'warn')
         this.showLocationTip = true
       })
     },
@@ -531,8 +561,8 @@ export default {
         if (window.AndroidInterface && window.AndroidInterface.openLocationSettings) {
           try {
             window.AndroidInterface.openLocationSettings()
-          } catch (e) {
-            console.log('调用原生方法失败')
+          } catch (error) {
+            this.addLog(`调用原生方法失败：${error.message}`, 'warn')
           }
         }
       } else {
@@ -568,109 +598,36 @@ export default {
       this.map.clearOverlays();
       this.createAndRunRidingRoute(this.startPoint, this.endPoint);
     },
-    // WGS84 坐标转 BD09 坐标（复用 RoutePlan 的实现）
-    convertWgs84ToBd09(wgsLng, wgsLat) {
-      return new Promise((resolve) => {
-        try {
-          const srcPt = new window.BMap.Point(wgsLng, wgsLat)
-          // 优先使用百度地图 Convertor API
-          if (window.BMap && window.BMap.Convertor && typeof window.BMap.Convertor.translate === 'function') {
-            window.BMap.Convertor.translate(srcPt, 3, 5, (pt1) => {
-              if (pt1 && pt1.lng && pt1.lat) {
-                resolve(pt1)
-              } else {
-                window.BMap.Convertor.translate(srcPt, 1, 5, (pt2) => {
-                  resolve((pt2 && pt2.lng && pt2.lat) ? pt2 : srcPt)
-                })
-              }
-            })
-          } else {
-            // 无 Convertor 时使用工具类
-            try {
-              const [bdLng, bdLat] = gcj02tobd09(wgsLng, wgsLat)
-              resolve(new window.BMap.Point(bdLng, bdLat))
-            } catch (e2) {
-              try {
-                const [bdLng2, bdLat2] = wgs84tobd09(wgsLng, wgsLat)
-                resolve(new window.BMap.Point(bdLng2, bdLat2))
-              } catch (e3) {
-                resolve(srcPt)
-              }
-            }
-          }
-        } catch (e) {
-          resolve(new window.BMap.Point(wgsLng, wgsLat))
-        }
-      })
-    },
-// ... existing code ...
-        getCurrLocation() {
+    // ... existing code ...
+     getCurrLocation() {
       const handleDefaultLocation = () => {
-        const defaultPoint = new window.BMap.Point(120.019, 30.274);
+        const defaultPoint = new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat);
         this.locationPoint = defaultPoint;
         this.map.centerAndZoom(defaultPoint, 16);
         this.createOrUpdateUserMarker(defaultPoint);
-        this.addLog('使用默认位置：杭州 (120.019, 30.274)', 'warn');
+        this.addLog(`使用默认位置：杭州 (${DEFAULT_LOCATION.lng}, ${DEFAULT_LOCATION.lat})`, 'warn');
       };
 
-      // 【修改】直接使用 HTML5 Geolocation 获取更高精度定位
-      this.addLog('调用 HTML5 Geolocation 获取高精度位置')
+      this.addLog('开始获取当前位置')
       
-      if (!navigator.geolocation) {
-        this.addLog('浏览器不支持 HTML5 Geolocation，使用默认位置', 'warn')
-        handleDefaultLocation()
-        return
-      }
-
-      const vm = this
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          // 保留六位小数
-          const wgsLng = Math.round(position.coords.longitude * 1000000) / 1000000
-          const wgsLat = Math.round(position.coords.latitude * 1000000) / 1000000
-          const accuracy = position.coords.accuracy
-          vm.addLog(`HTML5 定位成功 - WGS84: 经度=${wgsLng}, 纬度=${wgsLat}, 精度=${accuracy}米`)
-          
-          // 【重要】使用百度地图官方 Convertor API 进行坐标转换（新版 BMapGL）
-          vm.convertCoordinateByBaidu(wgsLng, wgsLat).then((bdPoint) => {
-            vm.addLog(`百度 Convertor 转换成功 - BD09: 经度=${bdPoint.lng}, 纬度=${bdPoint.lat}`)
-            vm.locationPoint = bdPoint
-            vm.map.centerAndZoom(bdPoint, 16)
-            vm.createOrUpdateUserMarker(bdPoint)
-            vm.addLog('地图已更新到精确定位位置')
-          }).catch((error) => {
-            // Convertor 失败时，降级使用工具函数
-            vm.addLog(`百度 Convertor 不可用：${error.message}，降级使用工具函数`, 'warn')
-            try {
-              const [bdLng, bdLat] = wgs84tobd09(wgsLng, wgsLat)
-              const bdPoint = new window.BMap.Point(bdLng, bdLat)
-              vm.addLog(`工具函数转换 - BD09: 经度=${bdLng}, 纬度=${bdLat}`)
-              vm.locationPoint = bdPoint
-              vm.map.centerAndZoom(bdPoint, 16)
-              vm.createOrUpdateUserMarker(bdPoint)
-              vm.addLog('地图已更新到定位位置（工具函数转换）')
-            } catch (err) {
-              vm.addLog(`所有转换失败，使用原始坐标`, 'error')
-              const point = new window.BMap.Point(wgsLng, wgsLat)
-              vm.locationPoint = point
-              vm.map.centerAndZoom(point, 16)
-              vm.createOrUpdateUserMarker(point)
-            }
-          })
+      // 【优化】使用通用定位方法
+      this.getCurrentPosition({
+        onSuccess: (bdPoint) => {
+          this.locationPoint = bdPoint
+          this.map.centerAndZoom(bdPoint, 16)
+          this.createOrUpdateUserMarker(bdPoint)
+          this.addLog('地图已更新到精确定位位置')
         },
-        (error) => {
-          vm.addLog(`HTML5 定位错误：code=${error.code}, message=${error.message}`, 'error')
+        onError: (error) => {
+          this.addLog(`获取位置失败：${error.message}`, 'error')
           handleDefaultLocation()
-        },
-        {
-          enableHighAccuracy: true, // 启用高精度模式
-          timeout: 10000,           // 超时时间 10 秒
-          maximumAge: 0             // 不使用缓存位置
         }
-      )
+      }).catch(() => {
+        handleDefaultLocation()
+      })
     },
-    
-    // 使用百度地图官方 Convertor API 进行坐标转换（新版 BMapGL）
+
+    // WGS84 坐标转 BD09 坐标（新版 BMapGL）
     convertCoordinateByBaidu(wgsLng, wgsLat) {
       return new Promise((resolve, reject) => {
         try {
@@ -678,7 +635,6 @@ export default {
           const BMapNS = window.BMapGL || window.BMap
           
           if (!BMapNS || !BMapNS.Convertor) {
-             this.addLog(`BMap Convertor 未加载)`)
             return reject(new Error('BMap Convertor 未加载'))
           }
           
@@ -711,7 +667,80 @@ export default {
         }
       })
     },
-// ... existing code ...
+    
+    // 【通用方法】获取当前位置（HTML5 + BMapGL Convertor）
+    // options: { enableHighAccuracy, timeout, maximumAge, needConvert, onSuccess, onError }
+    getCurrentPosition(options = {}) {
+      const {
+        enableHighAccuracy = true,
+        timeout = 10000,
+        maximumAge = 0,
+        needConvert = true, // 是否需要坐标转换
+        onSuccess, // 成功回调 (point) => {}
+        onError // 错误回调 (error) => {}
+      } = options
+      
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          const error = new Error('浏览器不支持 Geolocation')
+          this.addLog(error.message, 'warn')
+          if (onError) onError(error)
+          reject(error)
+          return
+        }
+        
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            // 保留六位小数
+            const wgsLng = Math.round(position.coords.longitude * 1000000) / 1000000
+            const wgsLat = Math.round(position.coords.latitude * 1000000) / 1000000
+            const accuracy = position.coords.accuracy
+            
+            this.addLog(`HTML5 定位成功 - WGS84: 经度=${wgsLng}, 纬度=${wgsLat}, 精度=${accuracy}米`)
+            
+            // 如果需要坐标转换
+            if (needConvert) {
+              this.convertCoordinateByBaidu(wgsLng, wgsLat)
+                .then((bdPoint) => {
+                  this.addLog(`Convertor 转换成功 - BD09: 经度=${bdPoint.lng}, 纬度=${bdPoint.lat}`)
+                  if (onSuccess) onSuccess(bdPoint)
+                  resolve(bdPoint)
+                })
+                .catch((error) => {
+                  this.addLog(`Convertor 不可用：${error.message}，降级使用工具函数`, 'warn')
+                  try {
+                    const [bdLng, bdLat] = wgs84tobd09(wgsLng, wgsLat)
+                    const bdPoint = new window.BMap.Point(bdLng, bdLat)
+                    this.addLog(`工具函数转换 - BD09: 经度=${bdLng}, 纬度=${bdLat}`)
+                    if (onSuccess) onSuccess(bdPoint)
+                    resolve(bdPoint)
+                  } catch (err) {
+                    const finalError = new Error('所有坐标转换失败')
+                    this.addLog(finalError.message, 'error')
+                    if (onError) onError(finalError)
+                    reject(finalError)
+                  }
+                })
+            } else {
+              // 不需要转换，直接返回 WGS84 坐标
+              const point = new window.BMap.Point(wgsLng, wgsLat)
+              if (onSuccess) onSuccess(point)
+              resolve(point)
+            }
+          },
+          (error) => {
+            this.addLog(`HTML5 定位错误：code=${error.code}, message=${error.message}`, 'error')
+            if (onError) onError(error)
+            reject(error)
+          },
+          {
+            enableHighAccuracy,
+            timeout,
+            maximumAge
+          }
+        )
+      })
+    },
     getAddressFromPoint(point) {
       const geoc = new window.BMap.Geocoder()
       geoc.getLocation(point, (result) => {
@@ -732,51 +761,47 @@ export default {
         }
       }
       const errorHandler = (err) => { 
-        const startPoint = new window.BMap.Point(120.019, 30.274)
+        const startPoint = new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat)
         const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
         this.startPoint = startPoint
         if (!this.endPoint) {
           this.endPoint = endPoint
         }
         this.createAndRunRidingRoute(startPoint, endPoint)
-        try {window.AndroidInterface.showFullAdFromWeb() } catch (e) {}
+        try { window.AndroidInterface.showFullAdFromWeb() } catch (error) { 
+          this.addLog(`调用安卓接口失败：${error.message}`, 'warn')
+        }
       }
       this.isGoing = true
-      // 获取当前位置
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-            // 优先使用交换后的终点坐标，如果没有则使用默认值
-            console.log('this.endPoint :', this.endPoint);
-            console.log('this.locationPoint :', this.locationPoint);
-            const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
-
-            // 保存起点和终点坐标
-            this.startPoint = startPoint
-            // 只有在endPoint还没有设置时才设置它，避免覆盖已设置的终点
-            console.log('this.endPoint:', this.endPoint);
-            if (!this.endPoint) {
-              this.endPoint = endPoint
-            } 
-
-      // 使用通用方法
-      this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-      try {window.AndroidInterface.showFullAdFromWeb() } catch (e) {}
-          },
-          (error) => {
-            errorHandler()
+      
+      // 【优化】使用通用定位方法
+      this.getCurrentPosition({
+        onSuccess: (startPoint) => {
+          this.addLog(`导航起点 - BD09: 经度=${startPoint.lng}, 纬度=${startPoint.lat}`)
+          this.startPoint = startPoint
+          
+          const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
+          if (!this.endPoint) {
+            this.endPoint = endPoint
           }
-        )
-      } else {
-        errorHandler()
-      }
+          
+          this.createAndRunRidingRoute(this.startPoint, this.endPoint)
+          try { window.AndroidInterface.showFullAdFromWeb() } catch (error) { 
+            this.addLog(`调用安卓接口失败：${error.message}`, 'warn')
+          }
+        },
+        onError: (error) => {
+          this.addLog(`导航定位失败：${error.message}`, 'error')
+          errorHandler()
+        }
+      })
     },
 
-    // 搜索地点功能
+
+     // 搜索地点功能
     searchLocation() {
       if (!this.searchText.trim()) {
-            return this.$toast('请输入搜索内容')
+        return this.$toast('请输入搜索内容')
       }
       // 创建地址解析器
       const geoc = new window.BMap.Geocoder()
@@ -789,26 +814,25 @@ export default {
           this.locationPoint = this.endPoint = point
           // 如果还没有设置起点，尝试获取当前位置作为起点
           if (!this.startPoint) {
-            if (navigator.geolocation) {
-              navigator.geolocation.getCurrentPosition(
-                (position) => {
-                  this.startPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-                },
-                () => {
-                  this.startPoint = new window.BMap.Point(120.019, 30.274)
-                }
-              )
-            } else {
-              this.startPoint = new window.BMap.Point(120.019, 30.274)
-            }
+            // 【优化】使用通用定位方法
+            this.getCurrentPosition({
+              onSuccess: (bdPoint) => {
+                this.addLog(`搜索起点 - BD09: 经度=${bdPoint.lng}, 纬度=${bdPoint.lat}`)
+                this.startPoint = bdPoint
+              },
+              onError: (error) => {
+                this.addLog(`获取起点失败：${error.message}`, 'warn')
+                this.startPoint = new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat)
+              }
+            })
           }
           this.map.centerAndZoom(point, 16)
           // 获取详细地址信息（用于卡片）
           this.getAddressFromPoint(point)
-          // 优先用本地搜索拿到与关键词最贴近的POI标题/地址，补充到标记信息中
+          // 优先用本地搜索拿到与关键词最贴近的 POI 标题/地址，补充到标记信息中
           try {
             const kw = (this.searchText || '').trim()
-            const stationReg = /骑士驿站|骑手驿站|外卖驿站/
+            const stationReg = /骑士驿站 | 骑手驿站 | 外卖驿站/
             const localSearch = new window.BMap.LocalSearch(this.map, { pageCapacity: 20 })
             localSearch.setSearchCompleteCallback((rs) => {
               try {
@@ -820,7 +844,7 @@ export default {
                     if (p && p.point && p.title) pois.push(p)
                   }
                 }
-                // 先找标题包含"骑士驿站"等的POI；若无，再用标题最接近搜索词的POI
+                // 先找标题包含"骑士驿站"等的 POI；若无，再用标题最接近搜索词的 POI
                 let candidate = pois.find(p => stationReg.test(p.title))
                 if (!candidate && kw) {
                   candidate = pois
@@ -857,7 +881,8 @@ export default {
               }
             })
             localSearch.searchNearby(kw || '骑士驿站', point, 1000)
-          } catch (e) {
+          } catch (error) {
+            this.addLog(`本地搜索异常：${error.message}`, 'error')
             // 兜底：仅落点
             this.createShopMarker(point)
           }
@@ -871,8 +896,7 @@ export default {
         }
       }, '中国') // 限制搜索范围在中国
     },
-
-    // 使用 shop.png 创建标记，并绑定点击展示信息（可附带POI元信息）
+    // 使用 shop.png 创建标记，并绑定点击展示信息（可附带 POI 元信息）
     createShopMarker(point, meta) {
       try {
         const icon = new window.BMap.Icon(shopIcon, new window.BMap.Size(48, 56), {
@@ -882,21 +906,23 @@ export default {
         marker.__poiMeta = meta || null
         this.map.addOverlay(marker)
         marker.addEventListener('click', () => {
-        this.showStationInfo(marker.__poiMeta, point)
+          this.showStationInfo(marker.__poiMeta, point)
         })
         return marker
-      } catch (e) {
-        console.error('创建商铺标记失败:', e)
+      } catch (error) {
+        this.addLog(`创建商铺标记失败：${error.message}`, 'error')
       }
     },
 
-    // 使用 user.png 创建或更新“我的位置”标记（保持 168:209 显示比例）
+    // 使用 user.png 创建或更新"我的位置"标记（保持 168:209 显示比例）
     createOrUpdateUserMarker(point) {
       if (!this.map || !point) return
       try {
         // 移除已有的用户定位标记
         if (this.currentUserMarker) {
-          try { this.map.removeOverlay(this.currentUserMarker) } catch (e) {}
+          try { this.map.removeOverlay(this.currentUserMarker) } catch (error) { 
+            this.addLog(`移除旧标记失败：${error.message}`, 'warn')
+          }
           this.currentUserMarker = null
         }
         // 以固定宽度按比例计算高度（比例 168:209）
@@ -908,8 +934,8 @@ export default {
         this.map.addOverlay(marker)
         this.currentUserMarker = marker
         return marker
-      } catch (e) {
-        console.error('创建用户定位标记失败:', e)
+      } catch (error) {
+        this.addLog(`创建用户定位标记失败：${error.message}`, 'error')
       }
     },
     // 根据模式处理附近搜索
@@ -929,12 +955,12 @@ export default {
       if (!this.map) return
       // 基准点：优先用搜索得到的点；否则当前位置；否则默认点
       let centerPoint = null
-      console.log('this.locationPoint:', this.locationPoint)
+      this.addLog(`当前 locationPoint: ${JSON.stringify(this.locationPoint)}`)
       if (this.locationPoint && this.locationPoint.lng && this.locationPoint.lat) {
         centerPoint = new window.BMap.Point(this.locationPoint.lng, this.locationPoint.lat)
       } else {
         // 尝试用地图中心
-        centerPoint = this.map.getCenter() || new window.BMap.Point(120.019, 30.274)
+        centerPoint = this.map.getCenter() || new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat)
       }
 
       const radius = 10000 // 10km 半径
@@ -952,7 +978,7 @@ export default {
           const includeHit = keywords.some(kw => kw && normTitle.includes(kw))
           const excludeHit = excludeKeywords.some(ek => ek && normTitle.includes(ek))
           return includeHit && !excludeHit
-        } catch (e) { return false }
+        } catch (error) { return false }
       }
 
       const searchNearby = (keyword) => new Promise((resolve) => {
@@ -966,24 +992,26 @@ export default {
                 for (let i = 0; i < num; i++) {
                   const poi = result.getPoi(i)
                   if (!poi || !poi.point || !poi.point.lng || !poi.point.lat) continue
-                  // 严格过滤：仅保留"标题包含关键字"的POI
+                  // 严格过滤：仅保留"标题包含关键字"的 POI
                   if (!matchesKeywords(poi)) continue
                   pois.push(poi)
                 }
               }
-            } catch (e) { /* ignore */ }
+            } catch (error) { /* ignore */ }
             resolve(pois)
           })
           localSearch.searchNearby(keyword, centerPoint, radius)
-        } catch (e) {
+        } catch (error) {
           resolve([])
         }
       })
 
       // 先清理上一次搜索产生的标记
       try {
-        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (e) {} })
-      } catch (e) { /* ignore */ }
+        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (error) { 
+          this.addLog(`移除标记失败：${error.message}`, 'warn')
+        } })
+      } catch (error) { /* ignore */ }
       this.stationMarkers = []
 
       Promise.allSettled(keywords.map(k => searchNearby(k))).then(results => {
@@ -991,7 +1019,7 @@ export default {
         results.forEach(r => {
           if (r.status === 'fulfilled' && Array.isArray(r.value)) {
             r.value.forEach(poi => {
-              // 优先使用uid去重，其次名称+坐标
+              // 优先使用 uid 去重，其次名称 + 坐标
               const uid = poi.uid || poi.uidUnique || ''
               const key = uid || `${poi.title || poi.name || ''}|${poi.point.lng.toFixed(5)}|${poi.point.lat.toFixed(5)}`
               if (!merged.has(key)) merged.set(key, poi)
@@ -1004,7 +1032,7 @@ export default {
         // 可按距离排序（就近优先）
         try {
           stations.sort((a, b) => this.map.getDistance(centerPoint, a.point) - this.map.getDistance(centerPoint, b.point))
-        } catch (e) { /* ignore */ }
+        } catch (error) { /* ignore */ }
 
         // 限制最大数量，避免过多覆盖物影响性能
         const limited = stations.slice(0, 50)
@@ -1013,7 +1041,7 @@ export default {
         if (limited.length) {
           try {
             this.map.setViewport(limited.map(p => p.point))
-          } catch (e) { /* ignore */ }
+          } catch (error) { /* ignore */ }
         }
 
         // 创建并记录此次搜索的标记，方便下次清理
@@ -1038,7 +1066,7 @@ export default {
         centerPoint = new window.BMap.Point(this.locationPoint.lng, this.locationPoint.lat)
       } else {
         // 尝试用地图中心
-        centerPoint = this.map.getCenter() || new window.BMap.Point(120.019, 30.274)
+        centerPoint = this.map.getCenter() || new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat)
       }
       const keywords = ['燃气']
       const searchNearby = (keyword) => new Promise((resolve) => {
@@ -1056,15 +1084,17 @@ export default {
             resolve(pois)
           })
           localSearch.searchNearby(keyword, centerPoint, 10000)
-        } catch (e) {
+        } catch (error) {
           resolve([])
         }
       })
 
       // 先清理上一次搜索产生的标记
       try {
-        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (e) {} })
-      } catch (e) { /* ignore */ }
+        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (error) { 
+          this.addLog(`移除标记失败：${error.message}`, 'warn')
+        } })
+      } catch (error) { /* ignore */ }
       this.stationMarkers = []
 
       Promise.allSettled(keywords.map(k => searchNearby(k))).then(results => {
@@ -1092,12 +1122,13 @@ export default {
         })
         
         this.$toast(`已加载"燃气营业厅"在附近的${limited.length}个结果`)
-      }).catch((err) => {
+      }).catch((error) => {
+        this.addLog(`燃气站点搜索失败：${error.message}`, 'error')
         this.$toast.fail('附近燃气营业厅搜索失败')
       })
     },
 
-    // 展示骑士驿站POI信息
+    // 展示骑士驿站 POI 信息
     showStationInfo(poi, point) {
       try {
         const { title, address } = poi
@@ -1121,61 +1152,59 @@ export default {
           title: isGasMode ? title : '骑士驿站'
         })
         this.map.openInfoWindow(infoWindow, point)
-      } catch (e) {
-        console.error('展示站点信息失败:', e)
+      } catch (error) {
+        this.addLog(`展示站点信息失败：${error.message}`, 'error')
       }
     },
 
     // 仅计算距离并写入到卡片
     computeDistanceSilent(targetPoint) {
       const errorHandler = () => {
-        const defaultPoint = new window.BMap.Point(120.019, 30.274)
+        const defaultPoint = new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat)
         const distance = this.map.getDistance(defaultPoint, targetPoint)
         this.distance = Math.round(distance)
       }
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const currentPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-            const distance = this.map.getDistance(currentPoint, targetPoint)
-            this.distance = Math.round(distance)
-          },
-          () => {
-            errorHandler()
-          }
-        )
-      } else {
-        errorHandler()
-      }
+      
+      // 【优化】使用通用定位方法
+      this.getCurrentPosition({
+        onSuccess: (bdPoint) => {
+          this.addLog(`计算距离 - BD09: 经度=${bdPoint.lng}, 纬度=${bdPoint.lat}`)
+          const distance = this.map.getDistance(bdPoint, targetPoint)
+          this.distance = Math.round(distance)
+        },
+        onError: (error) => {
+          this.addLog(`获取位置失败：${error.message}`, 'warn')
+          errorHandler()
+        }
+      })
     },
 
     // 计算并显示距离
     calculateAndDisplayDistance(targetPoint) {
       const errorHandler = () => {
-        const defaultPoint = new window.BMap.Point(120.019, 30.274)
+        const defaultPoint = new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat)
         const distance = this.map.getDistance(defaultPoint, targetPoint)
         const roundedDistance = Math.round(distance)
-        this.$toast(`距离EFC中心约${roundedDistance}米`)
+        this.$toast(`距离 EFC 中心约${roundedDistance}米`)
         this.distance = roundedDistance
         this.createShopMarker(targetPoint)
       }
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const currentPoint = new window.BMap.Point(position.coords.longitude, position.coords.latitude)
-            const distance = this.map.getDistance(currentPoint, targetPoint)
-            const roundedDistance = Math.round(distance) // 四舍五入到整数
-            this.$toast(`距离您当前位置约${roundedDistance}米`)
-            this.distance = roundedDistance
-            this.createShopMarker(targetPoint)
-          },
-          (error) => {
-            errorHandler()
-          }
-        )
-      } else {
-        errorHandler()
-      }
+      
+      // 【优化】使用通用定位方法
+      this.getCurrentPosition({
+        onSuccess: (bdPoint) => {
+          this.addLog(`显示距离 - BD09: 经度=${bdPoint.lng}, 纬度=${bdPoint.lat}`)
+          const distance = this.map.getDistance(bdPoint, targetPoint)
+          const roundedDistance = Math.round(distance)
+          this.$toast(`距离您当前位置约${roundedDistance}米`)
+          this.distance = roundedDistance
+          this.createShopMarker(targetPoint)
+        },
+        onError: (error) => {
+          this.addLog(`获取位置失败：${error.message}`, 'warn')
+          errorHandler()
+        }
+      })
     },
     // 调用安卓的注入方法 showFullAdFromWeb
     callAndroidShowFullAd() {
@@ -1185,10 +1214,10 @@ export default {
         } else if (window.showFullAdFromWeb && typeof window.showFullAdFromWeb === 'function') {
           window.showFullAdFromWeb()
         } else {
-          console.log('安卓注入方法 showFullAdFromWeb 不可用')
+          this.addLog('安卓注入方法 showFullAdFromWeb 不可用', 'warn')
         }
       } catch (error) {
-        console.error('调用安卓注入方法失败:', error)
+        this.addLog(`调用安卓注入方法失败：${error.message}`, 'error')
       }
     }
   }
@@ -1196,8 +1225,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-
-
 /* 地图容器样式 */
 .mobile-container {
   width: 100%;
@@ -1398,6 +1425,7 @@ export default {
   align-items: center;
   cursor: pointer;
   padding: 0;
+
   .action-icon {
     width: 24px;
     height: 24px;
@@ -1453,7 +1481,8 @@ export default {
     width: 340px;
   }
 }
-.search-adr{
+
+.search-adr {
   // width: 83px;
   height: 20px;
   font-family: PingFang SC, PingFang SC;
@@ -1465,14 +1494,16 @@ export default {
   font-style: normal;
   text-transform: none;
 }
-.left-icon{
+
+.left-icon {
   position: absolute;
   left: 0px;
   transform: translate(-50%);
   width: 10px;
   height: 20px;
 }
-.to-address{
+
+.to-address {
   height: 109px;
 }
 
@@ -1653,7 +1684,8 @@ export default {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-  margin-top: 2px; /* 微调垂直对齐 */
+  margin-top: 2px;
+  /* 微调垂直对齐 */
 }
 
 .start-dot {
@@ -1667,7 +1699,8 @@ export default {
 .location-text {
   max-width: 100%;
   display: -webkit-box;
-  -webkit-line-clamp: 2; /* 最多两行 */
+  -webkit-line-clamp: 2;
+  /* 最多两行 */
   -webkit-box-orient: vertical;
   line-clamp: 2;
   overflow: hidden;
@@ -1678,9 +1711,11 @@ export default {
   font-weight: 500;
   font-size: 14px;
   color: #333333;
-  line-height: 20px; /* 紧凑但易读 */
+  line-height: 20px;
+  /* 紧凑但易读 */
   text-align: left;
 }
+
 .location-divider {
   height: 1px;
   background: #F0F0F0;
@@ -1736,4 +1771,3 @@ export default {
   background: #999999;
 }
 </style>
-
