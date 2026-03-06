@@ -4,12 +4,6 @@ export const x_PI = 3.14159265358979324 * 3000.0 / 180.0
 export const PI = 3.1415926535897932384626
 export const a = 6378245.0
 export const ee = 0.00669342162296594323
-
-// 是否超出中国边界
-export const outOfChina = (lng, lat) => {
-  return (lng < 72.004 || lng > 137.8347) || ((lat < 0.8293 || lat > 55.8271) || false)
-}
-
 // 经度转换
 export function transformlat(lng, lat) {
   var ret = -100.0 + 2.0 * lng + 3.0 * lat + 0.2 * lat * lat + 0.1 * lng * lat + 0.2 * Math.sqrt(Math.abs(lng))
@@ -51,9 +45,6 @@ export const gcj02tobd09 = (lng, lat) => {
 
 // WGS84 -> GCJ02（WGS84 -> 谷歌/高德）
 export const wgs84togcj02 = (lng, lat) => {
-  if (outOfChina(lng, lat)) {
-    return [lng, lat]
-  } else {
     var dlat = transformlat(lng - 105.0, lat - 35.0)
     var dlng = transformlng(lng - 105.0, lat - 35.0)
     var radlat = lat / 180.0 * PI
@@ -65,14 +56,10 @@ export const wgs84togcj02 = (lng, lat) => {
     const mglat = lat + dlat
     const mglng = lng + dlng
     return [mglng, mglat]
-  }
 }
 
 // GCJ02 -> WGS84（谷歌/高德 -> WGS84）
 export const gcj02towgs84 = (lng, lat) => {
-  if (outOfChina(lng, lat)) {
-    return [lng, lat]
-  } else {
     var dlat = transformlat(lng - 105.0, lat - 35.0)
     var dlng = transformlng(lng - 105.0, lat - 35.0)
     var radlat = lat / 180.0 * PI
@@ -84,7 +71,6 @@ export const gcj02towgs84 = (lng, lat) => {
     const mglat = lat + dlat
     const mglng = lng + dlng
     return [lng * 2 - mglng, lat * 2 - mglat]
-  }
 }
 
 // BD09 -> WGS84
@@ -117,7 +103,6 @@ export default {
   a,
   ee,
   wgs84ToBd09New,
-  outOfChina,
   transformlat,
   transformlng,
   bd09togcj02,
@@ -127,5 +112,3 @@ export default {
   bd09towgs84,
   wgs84tobd09
 }
-
-
