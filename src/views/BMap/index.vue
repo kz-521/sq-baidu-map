@@ -127,7 +127,6 @@
 import shopIcon from '@/assets/shop.png'
 import userIcon from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
-import { wgs84ToBd09New } from '@/utils/coord'
 
 export default {
   name: 'BMap',
