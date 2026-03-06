@@ -120,6 +120,9 @@
       </div>
       <button class="tip-button" @click="enableLocation">开启</button>
     </div>
+
+     <!-- 日志面板组件 -->
+    <LogPanel ref="logPanel" />
   </div>
 </template>
 
@@ -127,10 +130,12 @@
 import shopIcon from '@/assets/shop.png'
 import userIcon from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
+import LogPanel from '@/components/LogPanel.vue'
+import { wgs84tobd09 } from '@/utils/coord'
 
 export default {
   name: 'BMap',
-    components: { MapLicenseInfo },
+    components: { MapLicenseInfo, LogPanel },
   data() {
     return {
       isFlashMode: false,  // URL 参数控制：isFlash=1 时进入闪送模式，isGas=1 时进入燃气模式
@@ -227,6 +232,12 @@ export default {
     this.checkLocationPermission()
   },
   methods: {
+    // 添加日志方法
+    addLog(message, type = 'info') {
+      if (this.$refs.logPanel) {
+        this.$refs.logPanel.addLog(message, type)
+      }
+    },
     // 地图组件就绪回调
     onMapReady({ BMap, map }) {
       try {
@@ -247,7 +258,7 @@ export default {
         }
       } catch (error) {
         this.$toast.fail('地图初始化失败')
-      }
+      } 
       this.setupMapEventListeners()
     },
     // 设置地图事件监听器
@@ -260,6 +271,9 @@ export default {
     },
     initializeHeatmap() {
       this.getCurrLocation()
+      // this.getCurrentLocationSilently(() => {
+      //   const center = this.locationPoint || this.map.getCenter()
+      // })
     },
     // 在路径规划线条上添加方向箭头
     addDirectionalArrows(polyline) {
@@ -554,33 +568,150 @@ export default {
       this.map.clearOverlays();
       this.createAndRunRidingRoute(this.startPoint, this.endPoint);
     },
-
-    getCurrLocation() {
+    // WGS84 坐标转 BD09 坐标（复用 RoutePlan 的实现）
+    convertWgs84ToBd09(wgsLng, wgsLat) {
+      return new Promise((resolve) => {
+        try {
+          const srcPt = new window.BMap.Point(wgsLng, wgsLat)
+          // 优先使用百度地图 Convertor API
+          if (window.BMap && window.BMap.Convertor && typeof window.BMap.Convertor.translate === 'function') {
+            window.BMap.Convertor.translate(srcPt, 3, 5, (pt1) => {
+              if (pt1 && pt1.lng && pt1.lat) {
+                resolve(pt1)
+              } else {
+                window.BMap.Convertor.translate(srcPt, 1, 5, (pt2) => {
+                  resolve((pt2 && pt2.lng && pt2.lat) ? pt2 : srcPt)
+                })
+              }
+            })
+          } else {
+            // 无 Convertor 时使用工具类
+            try {
+              const [bdLng, bdLat] = gcj02tobd09(wgsLng, wgsLat)
+              resolve(new window.BMap.Point(bdLng, bdLat))
+            } catch (e2) {
+              try {
+                const [bdLng2, bdLat2] = wgs84tobd09(wgsLng, wgsLat)
+                resolve(new window.BMap.Point(bdLng2, bdLat2))
+              } catch (e3) {
+                resolve(srcPt)
+              }
+            }
+          }
+        } catch (e) {
+          resolve(new window.BMap.Point(wgsLng, wgsLat))
+        }
+      })
+    },
+// ... existing code ...
+        getCurrLocation() {
       const handleDefaultLocation = () => {
         const defaultPoint = new window.BMap.Point(120.019, 30.274);
         this.locationPoint = defaultPoint;
         this.map.centerAndZoom(defaultPoint, 16);
         this.createOrUpdateUserMarker(defaultPoint);
+        this.addLog('使用默认位置：杭州 (120.019, 30.274)', 'warn');
       };
 
-      const geolocation = new window.BMap.Geolocation()
+      // 【修改】直接使用 HTML5 Geolocation 获取更高精度定位
+      this.addLog('调用 HTML5 Geolocation 获取高精度位置')
+      
+      if (!navigator.geolocation) {
+        this.addLog('浏览器不支持 HTML5 Geolocation，使用默认位置', 'warn')
+        handleDefaultLocation()
+        return
+      }
+
       const vm = this
-      geolocation.getCurrentPosition(function(r){
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          vm.locationPoint = r.point
-          const center = vm.map.getCenter()
-            const point = new window.BMap.Point(center.lng, center.lat)
-            vm.locationPoint = point
-            vm.map.centerAndZoom(point, 16)
-            vm.createOrUpdateUserMarker(point)
-        } else {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          // 保留六位小数
+          const wgsLng = Math.round(position.coords.longitude * 1000000) / 1000000
+          const wgsLat = Math.round(position.coords.latitude * 1000000) / 1000000
+          const accuracy = position.coords.accuracy
+          vm.addLog(`HTML5 定位成功 - WGS84: 经度=${wgsLng}, 纬度=${wgsLat}, 精度=${accuracy}米`)
+          
+          // 【重要】使用百度地图官方 Convertor API 进行坐标转换（新版 BMapGL）
+          vm.convertCoordinateByBaidu(wgsLng, wgsLat).then((bdPoint) => {
+            vm.addLog(`百度 Convertor 转换成功 - BD09: 经度=${bdPoint.lng}, 纬度=${bdPoint.lat}`)
+            vm.locationPoint = bdPoint
+            vm.map.centerAndZoom(bdPoint, 16)
+            vm.createOrUpdateUserMarker(bdPoint)
+            vm.addLog('地图已更新到精确定位位置')
+          }).catch((error) => {
+            // Convertor 失败时，降级使用工具函数
+            vm.addLog(`百度 Convertor 不可用：${error.message}，降级使用工具函数`, 'warn')
+            try {
+              const [bdLng, bdLat] = wgs84tobd09(wgsLng, wgsLat)
+              const bdPoint = new window.BMap.Point(bdLng, bdLat)
+              vm.addLog(`工具函数转换 - BD09: 经度=${bdLng}, 纬度=${bdLat}`)
+              vm.locationPoint = bdPoint
+              vm.map.centerAndZoom(bdPoint, 16)
+              vm.createOrUpdateUserMarker(bdPoint)
+              vm.addLog('地图已更新到定位位置（工具函数转换）')
+            } catch (err) {
+              vm.addLog(`所有转换失败，使用原始坐标`, 'error')
+              const point = new window.BMap.Point(wgsLng, wgsLat)
+              vm.locationPoint = point
+              vm.map.centerAndZoom(point, 16)
+              vm.createOrUpdateUserMarker(point)
+            }
+          })
+        },
+        (error) => {
+          vm.addLog(`HTML5 定位错误：code=${error.code}, message=${error.message}`, 'error')
           handleDefaultLocation()
+        },
+        {
+          enableHighAccuracy: true, // 启用高精度模式
+          timeout: 10000,           // 超时时间 10 秒
+          maximumAge: 0             // 不使用缓存位置
         }
-      },
-    (err) => {
-      handleDefaultLocation()
-    })
+      )
     },
+    
+    // 使用百度地图官方 Convertor API 进行坐标转换（新版 BMapGL）
+    convertCoordinateByBaidu(wgsLng, wgsLat) {
+      return new Promise((resolve, reject) => {
+        try {
+          // 检查是否有 BMapGL 或 BMap
+          const BMapNS = window.BMapGL || window.BMap
+          
+          if (!BMapNS || !BMapNS.Convertor) {
+             this.addLog(`BMap Convertor 未加载)`)
+            return reject(new Error('BMap Convertor 未加载'))
+          }
+          
+          // 创建 Convertor 实例（使用 BMapGL 命名空间）
+          const convertor = new BMapNS.Convertor()
+          
+          // 创建坐标点数组
+          const pointArr = [new BMapNS.Point(wgsLng, wgsLat)]
+          
+          this.addLog(`开始调用 BMapGL.Convertor.translate(WGS84→BD09)`)
+          
+          // 执行坐标转换
+          // from=1 表示 WGS84 坐标系，to=5 表示转换为 BD09 坐标系
+          convertor.translate(pointArr, 1, 5, (data) => {
+            if (data.status === 0) {
+              // 转换成功，使用 data.points[0]
+              const convertedPoint = data.points[0]
+              this.addLog(`Convertor 返回 - status=0, point=[${convertedPoint.lng}, ${convertedPoint.lat}]`)
+              resolve(convertedPoint)
+            } else {
+              const errorMsg = `Convertor 转换失败：status=${data.status}${data.message ? ', message=' + data.message : ''}`
+              this.addLog(errorMsg, 'error')
+              reject(new Error(errorMsg))
+            }
+          })
+        } catch (error) {
+          const errorMsg = `Convertor 调用异常：${error.message}`
+          this.addLog(errorMsg, 'error')
+          reject(new Error(errorMsg))
+        }
+      })
+    },
+// ... existing code ...
     getAddressFromPoint(point) {
       const geoc = new window.BMap.Geocoder()
       geoc.getLocation(point, (result) => {
