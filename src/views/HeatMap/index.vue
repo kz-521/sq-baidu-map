@@ -41,7 +41,7 @@ import LocationTipBar from '@/components/LocationTipBar.vue'
 
 // 常量配置
 const MAP_CONFIG = {
-  DEFAULT_CENTER: { lng: 116.391, lat: 39.906217 },
+  DEFAULT_CENTER: { lng: 120.019, lat: 30.274 }, // 【优化】使用准确的默认位置（杭州 EFC）
   DEFAULT_ZOOM: 15,
   LOCATION_ZOOM: 16,
   SEARCH_RADIUS: 2000,
@@ -64,8 +64,6 @@ const HEATMAP_CONFIG = {
   }
 }
 
-const LOC_STORAGE_KEY = 'heatmap_last_location'
-
 export default {
   name: 'HeatMap',
   components: { MapLicenseInfo, LocationTipBar },
@@ -85,48 +83,166 @@ export default {
       defaultZoom: MAP_CONFIG.DEFAULT_ZOOM,
       // 防抖相关
       isLocating: false, // 防止重复定位
-      // 首次热力图初始化标记，防止移动触发重复初始化
     }
   },
   async mounted() {
     this.checkLocationPermission()
   },
-  created() {
+created() {
+    const that = this
     try {
       if (navigator.geolocation) {
-        const vm = this
+        // 【优化】使用 HTML5 Geolocation 获取更高精度定位
         navigator.geolocation.getCurrentPosition(function(pos) {
           try {
             const {longitude, latitude}  = pos.coords
-            if (longitude && latitude) {
-              vm.prefetchedLocation = { longitude, latitude }
-              try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ longitude, latitude, ts: Date.now() })) } catch (_) {}
-              console.log('created: prefetched location =', longitude, latitude)
-            }
+            // 【关键】保留六位小数
+            const wgsLng = Math.round(longitude * 1000000) / 1000000
+            const wgsLat = Math.round(latitude * 1000000) / 1000000
+            
+            // 【关键】存储 WGS84 坐标，稍后转换为 BD09
+            that.prefetchedLocation = { longitude: wgsLng, latitude: wgsLat }
+            console.log('预取位置 (WGS84):', wgsLng, wgsLat)
           } catch (e) {}
-        }, function(err) {
-        }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 })
+        },
+        function(err) {
+          console.warn('预取位置失败:', err)
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 })
       }
     } catch (e) {}
   },
 
   methods: {
+    // 【通用方法】获取当前位置（HTML5 + BMapGL Convertor）
+    // options: { enableHighAccuracy, timeout, maximumAge, needConvert, onSuccess, onError }
+    getCurrentPosition(options = {}) {
+      const {
+        enableHighAccuracy = true,
+        timeout = 10000,
+        maximumAge = 0,
+        needConvert = true, // 是否需要坐标转换
+        onSuccess, // 成功回调 (point) => {}
+        onError // 错误回调 (error) => {}
+      } = options
+      
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          const error = new Error('浏览器不支持 Geolocation')
+          console.warn(error.message)
+          if (onError) onError(error)
+          reject(error)
+          return
+        }
+        
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            // 保留六位小数
+            const wgsLng = Math.round(position.coords.longitude * 1000000) / 1000000
+            const wgsLat = Math.round(position.coords.latitude * 1000000) / 1000000
+            const accuracy = position.coords.accuracy
+            
+            console.log(`HTML5 定位成功 - WGS84: 经度=${wgsLng}, 纬度=${wgsLat}, 精度=${accuracy}米`)
+            
+            // 如果需要坐标转换
+            if (needConvert) {
+              this.convertCoordinateByBaidu(wgsLng, wgsLat)
+                .then((bdPoint) => {
+                  console.log(`Convertor 转换成功 - BD09: 经度=${bdPoint.lng}, 纬度=${bdPoint.lat}`)
+                  if (onSuccess) onSuccess(bdPoint)
+                  resolve(bdPoint)
+                })
+                .catch((error) => {
+                  console.warn(`Convertor 不可用：${error.message}，降级使用工具函数`)
+                  try {
+                    const [bdLng, bdLat] = wgs84tobd09(wgsLng, wgsLat)
+                    const bdPoint = new window.BMap.Point(bdLng, bdLat)
+                    console.log(`工具函数转换 - BD09: 经度=${bdLng}, 纬度=${bdLat}`)
+                    if (onSuccess) onSuccess(bdPoint)
+                    resolve(bdPoint)
+                  } catch (err) {
+                    const finalError = new Error('所有坐标转换失败')
+                    console.error(finalError.message)
+                    if (onError) onError(finalError)
+                    reject(finalError)
+                  }
+                })
+            } else {
+              // 不需要转换，直接返回 WGS84 坐标
+              const point = new window.BMap.Point(wgsLng, wgsLat)
+              if (onSuccess) onSuccess(point)
+              resolve(point)
+            }
+          },
+          (error) => {
+            console.error(`HTML5 定位错误：code=${error.code}, message=${error.message}`)
+            if (onError) onError(error)
+            reject(error)
+          },
+          {
+            enableHighAccuracy,
+            timeout,
+            maximumAge
+          }
+        )
+      })
+    },
+    
     // 地图组件就绪回调
     onMapReady({ BMap, map }) {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
-        // 居中：优先使用预取定位；否则等待静默定位后再居中，避免先居中到默认位置造成跳动
+        
+        // 【关键修复】优先使用预取定位（必须转换为 BD09）
         if (this.prefetchedLocation) {
-          const p = new BMap.Point(this.prefetchedLocation.lng, this.prefetchedLocation.lat)
-          this.map.centerAndZoom(p, MAP_CONFIG.DEFAULT_ZOOM)
-          this.locationPoint = p
-          this.updateCurrMarker(p)
-          this.showLocationTip = false
-          this.isCenterInitialized = true
+          console.log('开始转换预取位置为 BD09...')
+          
+          // 【关键】将 WGS84 转换为 BD09
+          this.convertCoordinateByBaidu(this.prefetchedLocation.longitude, this.prefetchedLocation.latitude)
+            .then((bdPoint) => {
+              console.log('预取位置转换成功 - BD09:', bdPoint.lng, bdPoint.lat)
+              
+              this.map.centerAndZoom(bdPoint, MAP_CONFIG.DEFAULT_ZOOM)
+              this.locationPoint = bdPoint
+              this.updateCurrMarker(bdPoint)
+              this.showLocationTip = false
+              this.isCenterInitialized = true
+              
+              // 【关键】坐标转换完成后，再设置监听器并初始化热力图
+              this.setupMapEventListeners()
+            })
+            .catch((error) => {
+              console.warn('Convertor 不可用，降级使用工具函数:', error.message)
+              try {
+                const [bdLng, bdLat] = wgs84tobd09(this.prefetchedLocation.longitude, this.prefetchedLocation.latitude)
+                const bdPoint = new window.BMap.Point(bdLng, bdLat)
+                
+                this.map.centerAndZoom(bdPoint, MAP_CONFIG.DEFAULT_ZOOM)
+                this.locationPoint = bdPoint
+                this.updateCurrMarker(bdPoint)
+                this.isCenterInitialized = true
+                
+                // 【关键】坐标转换完成后，再设置监听器并初始化热力图
+                this.setupMapEventListeners()
+              } catch (err) {
+                console.error('所有转换失败，使用原始坐标')
+                // 最后的降级方案
+                const bdPoint = new window.BMap.Point(this.prefetchedLocation.longitude, this.prefetchedLocation.latitude)
+                this.map.centerAndZoom(bdPoint, MAP_CONFIG.DEFAULT_ZOOM)
+                this.locationPoint = bdPoint
+                this.updateCurrMarker(bdPoint)
+                
+                // 【关键】坐标转换完成后，再设置监听器并初始化热力图
+                this.setupMapEventListeners()
+              }
+            })
+        } else {
+          // 没有预取位置，直接设置监听器
+          this.setupMapEventListeners()
         }
-        this.setupMapEventListeners()
       } catch (e) {
+        console.error('onMapReady 错误:', e)
       }
     },
 
@@ -135,143 +251,77 @@ export default {
       const onTilesLoaded = () => {
         this.map.removeEventListener('tilesloaded', onTilesLoaded)
         this.mapLoaded = true
+        console.log('地图加载完成，开始初始化热力图')
         this.initializeHeatmap()
       }
-      this.map.addEventListener('tilesloaded', onTilesLoaded)  // 当地图所有图块完成加载时触发此事件
+      this.map.addEventListener('tilesloaded', onTilesLoaded)
     },
 
     // 初始化热力图
     initializeHeatmap() {
+      console.log('开始初始化热力图，当前 locationPoint:', this.locationPoint ? `${this.locationPoint.lng}, ${this.locationPoint.lat}` : 'null')
+      
+      // 【关键修复】确保在获取到准确位置后再渲染热力图
       this.getCurrentLocationSilently(() => {
-        const center = this.locationPoint || this.map.getCenter()
-        // 直接使用真实数据渲染（取消首屏少量数据与 Promise）
+        // 【关键】确保使用 locationPoint（已转换的 BD09 坐标）作为中心
+        const center = this.locationPoint
+        if (!center) {
+          console.error('❌ locationPoint 为空，无法渲染热力图')
+          return
+        }
+        
+        console.log('✅ 开始渲染热力图，中心点:', center.lng, center.lat)
+        
+        // 以定位点为中心搜索 POI
         this.fetchBusinessPOIs(center, MAP_CONFIG.SEARCH_RADIUS, (ok) => {
-          this.renderHeatmap()
+          if (ok && this.heatPOIs && this.heatPOIs.length > 0) {
+            console.log('✅ POI 数据获取成功，数量:', this.heatPOIs.length)
+            this.renderHeatmap()
+          } else {
+            console.warn('⚠️ POI 数据获取失败，使用模拟数据')
+            this.renderHeatmap()
+          }
         })
       })
     },
-    // 定位到当前位置：仅回到当前位置，不加图标
-    locateToCurrent() {
-      if (this.isLocating) return // 防抖处理
-
-      this.isLocating = true
-
-      if (!this.map) {
-        this.handleLocationFallback()
-        this.isLocating = false
-        return
-      }
-
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      geolocation.getCurrentPosition(function(r){
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          const center = vm.map.getCenter()
-          const dist = vm.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: r.point.lng, lat: r.point.lat })
-          if (!vm.isCenterInitialized) {
-            vm.map.centerAndZoom(r.point, MAP_CONFIG.LOCATION_ZOOM)
-            vm.isCenterInitialized = true
-          } else if (dist > 50) {
-            vm.map.panTo(r.point)
-          }
-          vm.locationPoint = r.point
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
-          vm.updateCurrMarker(r.point)
-          vm.showLocationTip = false
-          console.log('定位成功:', r.point.lng, r.point.lat)
-        } else {
-          // alert('failed' + (this.getStatus ? this.getStatus() : ''))
-          vm.handleLocationFallback()
-          vm.showLocationTip = true
-          console.error('定位失败，已回退到默认点1')
-        }
-        vm.isLocating = false
-      })
-    },
-    // 定位失败时的默认处理
-    handleLocationFallback() {
-      const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
-      this.locationPoint = defaultPoint
-      if (this.map) this.map.panTo(defaultPoint)
-      this.updateCurrMarker(defaultPoint)
-    },
-
+    
     // 静默定位后回调
     getCurrentLocationSilently(cb) {
-      // return
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      geolocation.getCurrentPosition(function(r){
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          vm.locationPoint = r.point
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
-          const center = vm.map.getCenter()
-          const dist = vm.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: r.point.lng, lat: r.point.lat })
-          if (!vm.isCenterInitialized) {
-            vm.map.centerAndZoom(r.point, MAP_CONFIG.LOCATION_ZOOM)
-            vm.isCenterInitialized = true
+      console.log('getCurrentLocationSilently 被调用')
+      
+      // 【关键修复】如果已经有 locationPoint（从预取位置转换而来），直接使用
+      if (this.locationPoint && this.isCenterInitialized) {
+        console.log('✅ 已有 locationPoint，跳过静默定位:', this.locationPoint.lng, this.locationPoint.lat)
+        if (cb) cb()
+        return
+      }
+      
+      // 【优化】使用通用定位方法
+      this.getCurrentPosition({
+        onSuccess: (bdPoint) => {
+          console.log('静默定位转换成功 - BD09:', bdPoint.lng, bdPoint.lat)
+          
+          this.locationPoint = bdPoint
+          const center = this.map.getCenter()
+          const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: bdPoint.lng, lat: bdPoint.lat })
+          
+          if (!this.isCenterInitialized) {
+            this.map.centerAndZoom(bdPoint, MAP_CONFIG.LOCATION_ZOOM)
+            this.isCenterInitialized = true
           } else if (dist > 50) {
-            vm.map.panTo(r.point)
+            this.map.panTo(bdPoint)
           }
-          vm.updateCurrMarker(r.point)
+          
+          this.updateCurrMarker(bdPoint)
           if (cb) cb()
-          console.log('静默定位成功')
-        } else {
-          vm.errorLocationfb(cb)
-          console.error('静默定位失败，已回退到默认点2')
+        },
+        onError: (error) => {
+          console.error('静默定位失败:', error.message)
+          this.errorLocationfb(cb)
         }
-      },
-    (err) => {
-        console.log(err,JSON.stringify(err),'静默定位err')
-        vm.errorLocationfb(cb)
-    })
+      })
     },
-    // 静默定位失败时的默认处理
-    errorLocationfb(cb) {
-      const defaultPoint = new window.BMap.Point( 116.391, 39.906217 )
-      this.locationPoint = defaultPoint
-      if (!this.mapLoaded) {
-        this.map.centerAndZoom(defaultPoint, MAP_CONFIG.DEFAULT_ZOOM)
-      }
-
-      this.updateCurrMarker(defaultPoint)
-      if (cb) cb()
-      console.warn('静默定位回退到默认位置:', defaultPoint.lng, defaultPoint.lat)
-    },
-
-    // 检查定位权限
-    checkLocationPermission() {
-      if (!navigator.permissions) return
-      navigator.permissions.query({ name: 'geolocation' }).then((res) => {
-        this.locationPermission = res.state
-        this.showLocationTip = res.state === 'denied'
-      }).catch((e) => { console.error('定位权限查询失败:', e && (e.message || e)) })
-    },
-
-    enableLocation() {
-      if (this.locationPermission === 'denied') {
-        this.$message && this.$message.info('请在浏览器/应用中开启定位权限')
-        this.callAndroidMethod('openLocationSettings')
-      } else {
-        this.locateToCurrent()
-      }
-    },
-
-    // 统一封装 Android 注入对象调用
-    callAndroidMethod(methodName, ...args) {
-      try {
-        const android = window && window.AndroidInterface
-        if (android && typeof android[methodName] === 'function') {
-          android[methodName](...args)
-          return true
-        }
-        return false
-      } catch (e) {
-        console.log('调用 Android 接口失败:', methodName, e)
-        return false
-      }
-    },
-
+    
     // 入口：一次性渲染热力图，移动/缩放时不重新渲染
     renderHeatmap() {
       if (!this.map || !this.mapLoaded) {
@@ -282,18 +332,19 @@ export default {
       console.log('开始一次性渲染热力图...')
       this.clearHeatOverlays()
 
-      const center = this.locationPoint || this.map.getCenter()
+      // 【关键修复】必须使用 locationPoint 作为中心，而不是 map.getCenter()
+      const center = this.locationPoint
       if (!center) {
-        console.log('未获取到中心点，跳过热力图渲染')
+        console.log('未获取到 locationPoint，跳过热力图渲染')
         return
       }
 
       const zoom = this.map.getZoom()
       console.log('渲染热力图，中心点:', center.lng, center.lat, '缩放级别:', zoom)
 
-      // 使用真实POI数据优先，否则使用模拟数据
+      // 使用真实 POI 数据优先，否则使用模拟数据
       if (this.heatPOIs && this.heatPOIs.length > 0) {
-        console.log('使用真实POI数据渲染热力图，POI数量:', this.heatPOIs.length)
+        console.log('使用真实 POI 数据渲染热力图，POI 数量:', this.heatPOIs.length)
         this.renderHeatFromPOIs(center, zoom)
       } else {
         console.log('使用模拟商圈数据渲染热力图')
@@ -301,14 +352,18 @@ export default {
         centers.forEach((center) => this.drawBusinessCluster(center, zoom))
       }
     },
-    // 真实POI商圈：一次性搜索，移动时不重新搜索
+    
+    // 真实 POI 商圈：一次性搜索，移动时不重新搜索
     fetchBusinessPOIs(center, radius = MAP_CONFIG.SEARCH_RADIUS, done) {
       const merged = Object.create(null)
       const keywords = HEATMAP_CONFIG.KEYWORDS.slice(0)
       const weightOf = (k) => HEATMAP_CONFIG.WEIGHTS[k] || 1
       let pending = keywords.length
-      if (pending === 0) { if (typeof done === 'function') done(false); return }
-      console.log('POI tasks prepared (cb):', pending)
+      if (pending === 0) { 
+        if (typeof done === 'function') done(false)
+        return 
+      }
+      console.log('POI tasks prepared (cb):', pending, '中心点:', center.lng, center.lat)
 
       const onFinishOne = () => {
         pending -= 1
@@ -317,7 +372,7 @@ export default {
             .sort((a, b) => this.distanceMeters(center, a) - this.distanceMeters(center, b))
             .slice(0, MAP_CONFIG.MAX_POI_COUNT)
           this.heatPOIs = sortedPOIs
-          console.log('POI一次性搜索完成，获取到', sortedPOIs.length, '个有效POI')
+          console.log('POI 一次性搜索完成，获取到', sortedPOIs.length, '个有效 POI')
           if (typeof done === 'function') done(true)
         }
       }
@@ -390,7 +445,7 @@ export default {
       }
     },
 
-    // 用POI集合绘制热力
+    // 用 POI 集合绘制热力
     renderHeatFromPOIs(center, zoom) {
       if (!this.mapLoaded || !this.heatPOIs || this.heatPOIs.length === 0) return
 
@@ -424,6 +479,7 @@ export default {
 
       processBatch(0)
     },
+    
     // 创建热力圆
     createHeatCircle(center, radius, color, opacity) {
       return new window.BMap.Circle(center, radius, {
@@ -451,6 +507,7 @@ export default {
 
       return centers
     },
+    
     // 绘制单个商圈簇：同心圆梯度 + 周边散点增强（恢复层透明度）
     drawBusinessCluster(centerPoint, zoom) {
       if (!this.mapLoaded || !centerPoint) return
@@ -496,7 +553,7 @@ export default {
       }
     },
 
-    // 米-经纬度换算（经度需考虑纬度收缩）
+    // 米 - 经纬度换算（经度需考虑纬度收缩）
     metersToLat(m) { return m / 111000 },
     metersToLng(m, lat) { return m / (111000 * Math.cos((lat || 0) * Math.PI / 180)) },
 
@@ -511,7 +568,7 @@ export default {
       this.heatOverlays = []
     },
 
-    // 距离计算（米）- 使用Haversine公式
+    // 距离计算（米）- 使用 Haversine 公式
     distanceMeters(a, b) {
       try {
         if (!a || !b) return 0
@@ -538,7 +595,7 @@ export default {
     // 更新/创建当前用户位置图标
     updateCurrMarker(point) {
       try {
-        const size = new window.BMap.Size(32, 38)   // 调整用户图标尺寸，使其更自然（宽高比约为1:1.2）
+        const size = new window.BMap.Size(32, 38)   // 调整用户图标尺寸，使其更自然（宽高比约为 1:1.2）
         const icon = new window.BMap.Icon(userIconImg, size, {
           imageSize: size,
           anchor: new window.BMap.Size(16, 19), // 锚点居中
@@ -553,6 +610,98 @@ export default {
       } catch (e) {
         console.warn('更新用户位置图标失败:', e)
       }
+    },
+    
+    // 定位到当前位置
+    locateToCurrent() {
+      if (this.isLocating) return // 防抖处理
+      this.isLocating = true
+      
+      if (!this.map) {
+        this.handleLocationFallback()
+        this.isLocating = false
+        return
+      }
+
+      // 【优化】使用通用定位方法
+      this.getCurrentPosition({
+        onSuccess: (bdPoint) => {
+          const center = this.map.getCenter()
+          const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: bdPoint.lng, lat: bdPoint.lat })
+          
+          if (!this.isCenterInitialized) {
+            this.map.centerAndZoom(bdPoint, MAP_CONFIG.LOCATION_ZOOM)
+            this.isCenterInitialized = true
+          } else if (dist > 50) {
+            this.map.panTo(bdPoint)
+          }
+          
+          this.locationPoint = bdPoint
+          this.updateCurrMarker(bdPoint)
+          this.showLocationTip = false
+          this.isLocating = false
+        },
+        onError: (error) => {
+          this.handleLocationFallback()
+          this.showLocationTip = true
+          this.isLocating = false
+        }
+      })
+    },
+    
+    // 定位失败时的默认处理
+    handleLocationFallback() {
+      const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
+      this.locationPoint = defaultPoint
+      if (this.map) this.map.panTo(defaultPoint)
+      this.updateCurrMarker(defaultPoint)
+    },
+    
+    // 检查定位权限
+    checkLocationPermission() {
+      if (!navigator.permissions) return
+      navigator.permissions.query({ name: 'geolocation' }).then((res) => {
+        this.locationPermission = res.state
+        this.showLocationTip = res.state === 'denied'
+      }).catch(() => { 
+        this.showLocationTip = true 
+      })
+    },
+    
+    // 开启定位功能
+    enableLocation() {
+      if (this.locationPermission === 'denied') {
+        this.$message && this.$message.info('请在浏览器/应用中开启定位权限')
+        this.callAndroidMethod('openLocationSettings')
+      } else {
+        this.locateToCurrent()
+      }
+    },
+    
+    // 统一封装 Android 注入对象调用
+    callAndroidMethod(methodName, ...args) {
+      try {
+        const android = window && window.AndroidInterface
+        if (android && typeof android[methodName] === 'function') {
+          android[methodName](...args)
+          return true
+        }
+        return false
+      } catch (e) {
+        return false
+      }
+    },
+    
+    // 静默定位失败时的默认处理
+    errorLocationfb(cb) {
+      const defaultPoint = new window.BMap.Point(MAP_CONFIG.DEFAULT_CENTER.lng, MAP_CONFIG.DEFAULT_CENTER.lat)
+      this.locationPoint = defaultPoint
+      if (!this.mapLoaded) {
+        this.map.centerAndZoom(defaultPoint, MAP_CONFIG.DEFAULT_ZOOM)
+      }
+
+      this.updateCurrMarker(defaultPoint)
+      if (cb) cb()
     },
   }
 }

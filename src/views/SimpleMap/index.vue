@@ -43,24 +43,6 @@ const MAP_CONFIG = {
   MAX_POI_COUNT: 30
 }
 
-const HEATMAP_CONFIG = {
-  KEYWORDS: ['商圈', '购物中心', '商业广场', '商业街','国际广场'],
-  WEIGHTS: {
-    '商圈': 1.3,
-    '购物中心': 1.2,
-    '商业广场': 1.1,
-    '商业街': 1.0,
-    '国际广场': 0.9,
-  },
-  COLORS: {
-    PRIMARY: '255,69,58',
-    SECONDARY: '255,122,124',
-    TERTIARY: '255,179,180'
-  }
-}
-
-const LOC_STORAGE_KEY = 'heatmap_last_location'
-
 export default {
   name: 'SimpleMap',
   components: { MapLicenseInfo, LocationTipBar },
@@ -95,7 +77,6 @@ export default {
             const {longitude, latitude}  = pos.coords
             if (longitude && latitude) {
               vm.prefetchedLocation = { longitude, latitude }
-              try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ longitude, latitude, ts: Date.now() })) } catch (_) {}
               console.log('created: prefetched location =', longitude, latitude)
             }
           } catch (e) {}
@@ -166,7 +147,6 @@ export default {
             vm.map.panTo(r.point)
           }
           vm.locationPoint = r.point
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
           vm.updateCurrMarker(r.point)
           vm.showLocationTip = false
           console.log('定位成功:', r.point.lng, r.point.lat)
@@ -195,7 +175,6 @@ export default {
       geolocation.getCurrentPosition(function(r){
         if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
           vm.locationPoint = r.point
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: r.point.lng, lat: r.point.lat, ts: Date.now() })) } catch (_) {}
           const center = vm.map.getCenter()
           const dist = vm.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: r.point.lng, lat: r.point.lat })
           if (!vm.isCenterInitialized) {

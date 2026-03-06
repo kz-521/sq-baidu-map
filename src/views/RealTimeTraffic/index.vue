@@ -2,16 +2,7 @@
   <div class="mobile-container">
 
     <!-- 地图容器（使用 vue-baidu-map 组件） -->
-    <baidu-map
-      class="map-container"
-      :center="mapCenter"
-      :zoom="15"
-      :scroll-wheel-zoom="true"
-      @ready="onMapReady"
-    />
-
-    <!-- 审图号信息 -->
-    <MapLicenseInfo />
+    <baidu-map class="map-container" :center="mapCenter" :zoom="15" :scroll-wheel-zoom="true" @ready="onMapReady"/>
 
     <!-- 定位提示条 -->
     <LocationTipBar :visible="showLocationTip" @enable="enableLocation" />
@@ -20,6 +11,8 @@
     <!-- 定位当前 -->
     <LocateButton @locate="locateToCurrent" />
 
+    <!-- 审图号信息 -->
+    <MapLicenseInfo />
   </div>
 </template>
 
@@ -131,7 +124,6 @@ export default {
           }
           
           this.locationPoint = point;
-          try { localStorage.setItem('heatmap_last_location', JSON.stringify({ lng: lng, lat: lat, ts: Date.now() })) } catch (_) {}
           this.updateCurrentMarker(point);
           console.log('成功使用URL中的经纬度参数进行定位');
       } catch (error) {

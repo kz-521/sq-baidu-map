@@ -90,8 +90,6 @@ import LocationTipBar from '@/components/LocationTipBar.vue'
 import ZoomControl from '@/components/ZoomControl.vue'
 import LocateButton from '@/components/LocateButton.vue'
 
-const LOC_STORAGE_KEY = 'speedcruise_last_location'
-
 export default {
   name: 'SpeedCruise',
   components: { MapLicenseInfo, LocationTipBar, ZoomControl, LocateButton, /* LogPanel */ },
@@ -131,7 +129,6 @@ export default {
             const lat = pos.coords.latitude
             if (lng && lat) {
               vm.prefetchedLocation = { lng, lat }
-              localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng, lat, ts: Date.now() }))
             }
           } catch (e) {}
         }, function(err) {
@@ -177,7 +174,6 @@ export default {
           }
           
           this.locationPoint = point;
-          try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify({ lng: lng, lat: lat, ts: Date.now() })) } catch (_) {}
           this.updateCurrentMarker(point);
       } catch (error) {
         console.error('使用prefetchedLocation进行定位时出错:', error);

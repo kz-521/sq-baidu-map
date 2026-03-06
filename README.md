@@ -187,8 +187,8 @@ MIT
 https://earn-h5.shengqu99.com/#/RoutePlan/index?lat=30.361424&lng=120.054475&picklat=30.318519&picklng=120.085846
 //热力图
 val REGIST_HOT =
-    "https://earn-h5.shengqu99.com/#/HeatMap/index"
-    https://hamster-chat.dns.army/#/HeatMap/index
+https://earn-h5.shengqu99.com/#/HeatMap/index
+https://hamster-chat.dns.army/#/HeatMap/index
 
 //驿站
 val REGIST_POST_STAGE =
