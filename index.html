@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>sq-map</title>
+    <link rel="icon" href="/favicon.ico" />
+
+    <!-- 百度地图脚本预加载 -->
+    <link rel="preload" as="script" href="https://api.map.baidu.com/api?v=3.0&ak=JZ7exm3yUlWSewreBHs0celsfohscaod&s=1" />
+
+    <!-- DNS 预解析 / 预连接 -->
+    <link rel="dns-prefetch" href="https://api.map.baidu.com" />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://api.map.baidu.com" crossorigin />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <!-- 百度地图脚本 -->
+    <script src="https://api.map.baidu.com/api?v=3.0&ak=JZ7exm3yUlWSewreBHs0celsfohscaod&s=1"></script>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+

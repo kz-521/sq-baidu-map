@@ -3,18 +3,12 @@
     <img src="@/assets/position.png" alt="定位到当前位置" class="loc-icon">
   </div>
 </template>
-
-<script>
-export default {
-  name: 'LocateButton',
-  methods: {
-    locate() {
-      this.$emit('locate');
-    }
-  }
+<script setup>
+const emit = defineEmits(['locate'])
+function locate() {
+  emit('locate')
 }
 </script>
-
 <style lang="scss" scoped>
 /* 定位按钮：右18px，下107px */
 .fixed-locate-button {

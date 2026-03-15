@@ -2,7 +2,6 @@
 
 module.exports = {
   'plugins': {
-    // to edit target browsers: use "browserslist" field in package.json
-    'autoprefixer': {}
+    'autoprefixer': {} // 启用了 autoprefixer，会根据 package.json 里的 browserslist 自动给 CSS 加浏览器前缀
   }
 }

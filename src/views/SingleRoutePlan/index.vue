@@ -17,442 +17,407 @@
   </div>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted, getCurrentInstance } from 'vue'
+import { useRoute } from 'vue-router'
 import startIcon from '@/assets/start.png'
 import endIcon from '@/assets/end.png'
 import tipIcon from '@/assets/tip.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 import { gcj02tobd09 } from '@/utils/coord'
 
-export default {
-  name: 'SingleRoutePlan',
-  components: {
-    MapLicenseInfo
-  },
-  data() {
-    return {
-      map: null,
-      showLocationTip: false,
-      locationPermission: '',
-      startPoint: null,
-      endPoint: null,
-      hasPlanned: false,
-      routeType: 'driving' // driving|riding|walking
+const route = useRoute()
+const { proxy } = getCurrentInstance()
+
+const map = ref(null)
+const showLocationTip = ref(false)
+const locationPermission = ref('')
+const startPoint = ref(null)
+const endPoint = ref(null)
+const hasPlanned = ref(false)
+const routeType = ref('driving')
+
+onMounted(() => {
+  setTimeout(() => {
+    initMap()
+  }, 300)
+})
+
+const suppressOverlayClick = (overlay) => {
+  try {
+    const handler = (e) => {
+      try { map.value && map.value.closeInfoWindow && map.value.closeInfoWindow() } catch {}
+      e.domEvent?.stopPropagation()
+      return false
     }
-  },
-  async mounted() {
-    setTimeout(() => {
-      this.initMap()
-      // this.checkLocationPermission()
-    }, 300)
-  },
-  methods: {
-    // 禁用覆盖物点击后弹出信息
-    suppressOverlayClick(overlay) {
-      try {
-        const handler = (e) => {
-          try { this.map && this.map.closeInfoWindow && this.map.closeInfoWindow() } catch (e2) {}
-          e.domEvent.stopPropagation()
-          return false
-        }
-        overlay.addEventListener('click', handler)
-      } catch (e) { }
-    },
-    // 从URL读取终点经纬度（不做经纬度顺序纠正）
-    parseDestinationFromUrl() {
-      const { lat, lng} = this.$route.query
-      const [bdLng, bdLat] = gcj02tobd09(lng, lat)
-      this.endPoint = new window.BMap.Point(bdLng, bdLat)
-      this.locationPoint = this.endPoint
-      this.map.panTo(this.endPoint)
-    },
+    overlay.addEventListener('click', handler)
+  } catch {}
+}
 
-    // 解析路线类型：type=0(驾车) 1(骑行) 2(步行)；默认驾车
-    parseRouteTypeFromUrl() {
-      try {
-        let t = Number(this.$route.query.type)
-        if (!Number.isFinite(t)) t = 0
-        if (t === 0) this.routeType = 'driving'
-        else if (t === 1) this.routeType = 'riding'
-        else if (t === 2) this.routeType = 'walking'
-        else this.routeType = 'driving'
-      } catch (_) {
-        this.routeType = 'driving'
-      }
-    },
-    // 根据URL中的终点经纬度，使用当前位置作为起点进行路径规划
-    startNavigation() {
-      if (this.hasPlanned) return
-      // 解析终点坐标
-      this.parseDestinationFromUrl()
-      // 先将视野移动到终点以便用户有反馈
-      this.map.centerAndZoom(this.endPoint, 16)
-      // 写死的起点：与默认"我的位置"一致，方便视觉一致
-      const fallbackStartPoint = new window.BMap.Point(120.170700, 30.257069)
-      // 超时保护：若定位迟迟无结果，则使用写死起点进行模拟规划
-      const guardTimer = setTimeout(() => {
-        if (!this.hasPlanned) {
-          this.startPoint = fallbackStartPoint
-          this.createDirectRoute(this.startPoint, this.endPoint)
-          this.hasPlanned = true
-        }
-      }, 12000)
+const parseDestinationFromUrl = () => {
+  const { lat, lng } = route.query
+  const [bdLng, bdLat] = gcj02tobd09(lng, lat)
+  const point = new window.BMap.Point(bdLng, bdLat)
+  endPoint.value = point
+  map.value?.panTo(point)
+}
 
-      // 获取当前位置作为起点（成功则覆盖写死起点）
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      geolocation.getCurrentPosition(function(r){
-        try { clearTimeout(guardTimer) } catch (e) {}
-        if (vm.hasPlanned) return
-        if ((this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) && r && r.point) {
-          // BMap.Geolocation 返回的坐标已经是 BD-09 格式，无需转换
-          vm.startPoint = r.point
-          vm.createDirectRoute(vm.startPoint, vm.endPoint)
-          vm.map.setViewport([vm.startPoint, vm.endPoint])
-          vm.hasPlanned = true
-        } else {
-          // 定位失败，使用写死起点
-          vm.startPoint = fallbackStartPoint
-          vm.createDirectRoute(vm.startPoint, vm.endPoint)
-          vm.map.setViewport([vm.startPoint, vm.endPoint])
-          vm.hasPlanned = true
-        }
-      })
-    },
+const parseRouteTypeFromUrl = () => {
+  try {
+    let t = Number(route.query.type)
+    if (!Number.isFinite(t)) t = 0
+    if (t === 0) routeType.value = 'driving'
+    else if (t === 1) routeType.value = 'riding'
+    else if (t === 2) routeType.value = 'walking'
+    else routeType.value = 'driving'
+  } catch {
+    routeType.value = 'driving'
+  }
+}
 
-    // 添加起点和终点标记
-    addStartEndMarkers(startPoint, endPoint) {
-      try {
-        // 创建起点图标
-        const startIconSize = new window.BMap.Size(59, 77)
-        const startIconImage = new window.BMap.Icon(startIcon, startIconSize, {
-          imageOffset: new window.BMap.Size(0, 0),
-          anchor: new window.BMap.Size(29.5, 38.5)
-        })
+const startNavigation = () => {
+  if (hasPlanned.value) return
+  parseDestinationFromUrl()
+  map.value?.centerAndZoom(endPoint.value, 16)
+  const fallbackStartPoint = new window.BMap.Point(120.170700, 30.257069)
 
-        // 创建终点图标
-        const endIconSize = new window.BMap.Size(59, 77)
-        const endIconImage = new window.BMap.Icon(endIcon, endIconSize, {
-          imageOffset: new window.BMap.Size(0, 0),
-          anchor: new window.BMap.Size(29.5, 38.5)
-        })
+  const guardTimer = setTimeout(() => {
+    if (!hasPlanned.value) {
+      startPoint.value = fallbackStartPoint
+      createDirectRoute(startPoint.value, endPoint.value)
+      hasPlanned.value = true
+    }
+  }, 12000)
 
-        // 添加起点标记
-        const startMarker = new window.BMap.Marker(startPoint, {
-          icon: startIconImage,
-          enableDragging: false
-        })
-        this.map.addOverlay(startMarker)
+  const geolocation = new window.BMap.Geolocation()
+  geolocation.getCurrentPosition(function (r) {
+    try { clearTimeout(guardTimer) } catch {}
+    if (hasPlanned.value) return
+    if ((this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) && r && r.point) {
+      startPoint.value = r.point
+      createDirectRoute(startPoint.value, endPoint.value)
+      map.value?.setViewport([startPoint.value, endPoint.value])
+      hasPlanned.value = true
+    } else {
+      startPoint.value = fallbackStartPoint
+      createDirectRoute(startPoint.value, endPoint.value)
+      map.value?.setViewport([startPoint.value, endPoint.value])
+      hasPlanned.value = true
+    }
+  })
+}
 
-        // 添加终点标记
-        const endMarker = new window.BMap.Marker(endPoint, {
-          icon: endIconImage,
-          enableDragging: false
-        })
-        this.map.addOverlay(endMarker)
+const addStartEndMarkers = (s, e) => {
+  try {
+    const startIconSize = new window.BMap.Size(59, 77)
+    const startIconImage = new window.BMap.Icon(startIcon, startIconSize, {
+      imageOffset: new window.BMap.Size(0, 0),
+      anchor: new window.BMap.Size(29.5, 38.5)
+    })
 
-        // 添加起点标签
-        const startLabel = new window.BMap.Label('定位点', {
-          position: startPoint,
-          offset: new window.BMap.Size(0, -90)
-        })
-        startLabel.setStyle({
-          color: '#333',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          backgroundImage: `url(${tipIcon})`,
-          backgroundSize: 'contain',
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center',
-          padding: '8px 12px',
-          whiteSpace: 'nowrap',
-          textAlign: 'center'
-        })
-        this.map.addOverlay(startLabel)
+    const endIconSize = new window.BMap.Size(59, 77)
+    const endIconImage = new window.BMap.Icon(endIcon, endIconSize, {
+      imageOffset: new window.BMap.Size(0, 0),
+      anchor: new window.BMap.Size(29.5, 38.5)
+    })
 
-        // 添加终点标签
-        const endLabel = new window.BMap.Label('目的地', {
-          position: endPoint,
-          offset: new window.BMap.Size(0, -90)
-        })
-        endLabel.setStyle({
-          color: '#333',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          backgroundImage: `url(${tipIcon})`,
-          backgroundSize: 'contain',
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center',
-          padding: '8px 12px',
-          whiteSpace: 'nowrap',
-          textAlign: 'center'
-        })
-        this.map.addOverlay(endLabel)
-      } catch (e) {
-        console.error('添加起点终点标记失败:', e)
-      }
-    },
+    const startMarker = new window.BMap.Marker(s, {
+      icon: startIconImage,
+      enableDragging: false
+    })
+    map.value.addOverlay(startMarker)
 
-    // 创建自定义起点、终点图标的辅助函数
-    createCustomMarkers() {
-      const iconConfig = {
-        containerSize: new window.BMap.Size(20, 51),
-        imageSize: new window.BMap.Size(20, 26)
-      }
+    const endMarker = new window.BMap.Marker(e, {
+      icon: endIconImage,
+      enableDragging: false
+    })
+    map.value.addOverlay(endMarker)
 
-      const startIconImage = new window.BMap.Icon(startIcon, iconConfig.containerSize, {
-        imageSize: iconConfig.imageSize
-      })
+    const startLabel = new window.BMap.Label('定位点', {
+      position: s,
+      offset: new window.BMap.Size(0, -90)
+    })
+    startLabel.setStyle({
+      color: '#333',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      backgroundImage: `url(${tipIcon})`,
+      backgroundSize: 'contain',
+      backgroundRepeat: 'no-repeat',
+      backgroundPosition: 'center',
+      padding: '8px 12px',
+      whiteSpace: 'nowrap',
+      textAlign: 'center'
+    })
+    map.value.addOverlay(startLabel)
 
-      const endIconImage = new window.BMap.Icon(endIcon, iconConfig.containerSize, {
-        imageSize: iconConfig.imageSize
-      })
+    const endLabel = new window.BMap.Label('目的地', {
+      position: e,
+      offset: new window.BMap.Size(0, -90)
+    })
+    endLabel.setStyle({
+      color: '#333',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      backgroundImage: `url(${tipIcon})`,
+      backgroundSize: 'contain',
+      backgroundRepeat: 'no-repeat',
+      backgroundPosition: 'center',
+      padding: '8px 12px',
+      whiteSpace: 'nowrap',
+      textAlign: 'center'
+    })
+    map.value.addOverlay(endLabel)
+  } catch (e) {
+    console.error('添加起点终点标记失败:', e)
+  }
+}
 
-      return { startIconImage, endIconImage }
-    },
+const createCustomMarkers = () => {
+  const iconConfig = {
+    containerSize: new window.BMap.Size(20, 51),
+    imageSize: new window.BMap.Size(20, 26)
+  }
 
-    // 设置自定义标记的回调函数
-    setCustomMarkersCallback(routeInstance) {
-      routeInstance.setMarkersSetCallback((pois) => {
-        const { startIconImage, endIconImage } = this.createCustomMarkers()
-        pois[0].marker.setIcon(startIconImage)
-        this.addLabelIcon(pois[0].point, '起点', tipIcon)
-        this.suppressOverlayClick(pois[0].marker)
-        pois[pois.length - 1].marker.setIcon(endIconImage)
-        this.addLabelIcon(pois[pois.length - 1].point, '终点', tipIcon)
-        this.suppressOverlayClick(pois[pois.length - 1].marker)
-      })
-    },
-    // 添加标签图标的辅助函数
-    addLabelIcon(point, text, iconUrl) {
-      try {
-        const label = new window.BMap.Label(text, {
-          position: point,
-          offset: new window.BMap.Size(-29, -50)  // 向左移动10px：左偏移30px，上偏移50px
-        })
+  const startIconImage = new window.BMap.Icon(startIcon, iconConfig.containerSize, {
+    imageSize: iconConfig.imageSize
+  })
 
-        // 标签样式配置
-        const labelStyle = {
-          color: '#333',
-          fontSize: '10px',   // 调整字体大小，适应更小的标签
-          fontWeight: 'bold',
-          backgroundImage: `url(${iconUrl})`,
-          backgroundSize: '100% 100%',
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center',
-          backgroundColor: 'transparent',
-          padding: '3px 6px 6px 6px',  // 上边距增加，下边距减少，让文字向下移动
-          whiteSpace: 'nowrap',
-          textAlign: 'center',
-          verticalAlign: 'middle',
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'center',
-          width: '58px',      // 设置固定宽度
-          height: '24.83px',  // 设置固定高度
-          border: 'none',
-          borderRadius: '8px'
-        }
+  const endIconImage = new window.BMap.Icon(endIcon, iconConfig.containerSize, {
+    imageSize: iconConfig.imageSize
+  })
 
-        label.setStyle(labelStyle)
-        this.map.addOverlay(label)
-      } catch (e) {
-        console.error('添加标签图标失败:', e)
-      }
-    },
-    // 创建两点之间的直接路径规划
-    createDirectRoute(startPoint, endPoint) {
-      this.createRouteStage(startPoint, endPoint)
-    },
+  return { startIconImage, endIconImage }
+}
 
-    // 创建路线阶段
-    createRouteStage(startPoint, endPoint ) {
-      let that = this
-      try {
-        const RouteClass = this.routeType === 'riding'
-          ? (window.BMap && window.BMap.RidingRoute)
-          : this.routeType === 'walking'
-            ? (window.BMap && window.BMap.WalkingRoute)
-            : (window.BMap && window.BMap.DrivingRoute)
+const setCustomMarkersCallback = (routeInstance) => {
+  routeInstance.setMarkersSetCallback((pois) => {
+    const { startIconImage, endIconImage } = createCustomMarkers()
+    pois[0].marker.setIcon(startIconImage)
+    addLabelIcon(pois[0].point, '起点', tipIcon)
+    suppressOverlayClick(pois[0].marker)
+    pois[pois.length - 1].marker.setIcon(endIconImage)
+    addLabelIcon(pois[pois.length - 1].point, '终点', tipIcon)
+    suppressOverlayClick(pois[pois.length - 1].marker)
+  })
+}
 
-        if (!RouteClass) {
-           this.$toast('路线服务未就绪')
-          return
-        }
+const addLabelIcon = (point, text, iconUrl) => {
+  try {
+    const label = new window.BMap.Label(text, {
+      position: point,
+      offset: new window.BMap.Size(-29, -50)
+    })
 
-        const inst = new RouteClass(this.map, {
-          renderOptions: { map: this.map, autoViewport: false }
-        })
+    const labelStyle = {
+      color: '#333',
+      fontSize: '10px',
+      fontWeight: 'bold',
+      backgroundImage: `url(${iconUrl})`,
+      backgroundSize: '100% 100%',
+      backgroundRepeat: 'no-repeat',
+      backgroundPosition: 'center',
+      backgroundColor: 'transparent',
+      padding: '3px 6px 6px 6px',
+      whiteSpace: 'nowrap',
+      textAlign: 'center',
+      verticalAlign: 'middle',
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+      width: '58px',
+      height: '24.83px',
+      border: 'none',
+      borderRadius: '8px'
+    }
 
-        // 设置自定义标记回调
-        this.setCustomMarkersCallback(inst)
+    label.setStyle(labelStyle)
+    map.value.addOverlay(label)
+  } catch (e) {
+    console.error('添加标签图标失败:', e)
+  }
+}
 
-        inst.search(startPoint, endPoint)
-        inst.setSearchCompleteCallback((rs) => {
-          const ok = inst.getStatus && inst.getStatus() === window.BMAP_STATUS_SUCCESS && rs && rs.getPlan && rs.getPlan(0)
-          if (ok) {
-            this.map.setViewport([startPoint, endPoint])
-          } else {
-            this.$toast.fail(`路径规划失败`)
-          }
-        })
-      } catch (e) {
-         this.$toast.fail('路线规划失败')
-      }
-    },
-    initMap() {
-      try {
-        if (!window.BMap || !window.BMap.Map) {
-          setTimeout(() => {
-            this.initMap()
-          }, 500)
-          return
-        }
+const createDirectRoute = (s, e) => {
+  createRouteStage(s, e)
+}
 
-        // 创建地图实例
-        this.map = new window.BMap.Map('map-container', {
-          enableMapClick: false,
-          displayOptions: {
-            building: false
-          }
-        })
+const createRouteStage = (s, e) => {
+  try {
+    const RouteClass =
+      routeType.value === 'riding'
+        ? window.BMap?.RidingRoute
+        : routeType.value === 'walking'
+          ? window.BMap?.WalkingRoute
+          : window.BMap?.DrivingRoute
 
-        // 设置地图中心点（默认位置）
-        const point = new window.BMap.Point(120.170700, 30.257069)
-        this.map.centerAndZoom(point, 18)
+    if (!RouteClass) {
+      proxy.$toast?.('路线服务未就绪')
+      return
+    }
 
-        // 应用地图样式
-        const mapStyle = [{
-          'featureType': 'background',
-          'elementType': 'geometry',
-          'stylers': {
-            'color': '#e6e8ebff'
-          }
-        }, {
-          'featureType': 'green',
-          'elementType': 'geometry',
-          'stylers': {
-            'color': '#b2e2bfff'
-          }
-        }, {
-          'featureType': 'highrailway',
-          'elementType': 'geometry',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'railway',
-          'elementType': 'geometry',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'vacationway',
-          'elementType': 'geometry',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'highwaysign',
-          'elementType': 'labels',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'highwaysign',
-          'elementType': 'labels.icon',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'nationalwaysign',
-          'elementType': 'labels.icon',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'nationalwaysign',
-          'elementType': 'labels',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'provincialwaysign',
-          'elementType': 'labels',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }, {
-          'featureType': 'provincialwaysign',
-          'elementType': 'labels.icon',
-          'stylers': {
-            'visibility': 'off'
-          }
-        }] 
+    const inst = new RouteClass(map.value, {
+      renderOptions: { map: map.value, autoViewport: false }
+    })
 
-        this.map.setMapStyleV2({
-          styleJson: mapStyle
-        })
-        this.parseRouteTypeFromUrl()
-        this.startNavigation()
-      } catch (error) {
-         this.$toast.fail('地图初始化失败')
-      }
-    },
-    locateToCurrent() {
-      try { window.AndroidInterface.showFullAdFromWeb() } catch (e) {}
-      // 检查定位权限
-      this.checkLocationPermission()
-      const geolocation = new window.BMap.Geolocation()
-      const vm = this
-      geolocation.getCurrentPosition(function(r){
-        if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
-          vm.map.panTo(r.point)
-          vm.locationPoint = r.point
-          vm.startPoint = r.point
-          // 定位成功，隐藏提示条
-          vm.showLocationTip = false
-        } else {
-          // 定位失败，回落到默认中心
-          const defaultPoint = new window.BMap.Point(120.170700, 30.257069)
-          vm.map.panTo(defaultPoint)
-          vm.locationPoint = defaultPoint
-          vm.startPoint = defaultPoint
-          vm.showLocationTip = true
-        }
-      })
-    },
-    // 检查定位权限
-    checkLocationPermission() {
-      if (!navigator.permissions) return
-      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-        this.locationPermission = result.state
-        if (result.state === 'denied') {
-          this.showLocationTip = true
-        } else if (result.state === 'granted') {
-          this.showLocationTip = false
-        }
-      }).catch(() => {
-        // 权限查询失败，忽略
-      })
-    },
+    setCustomMarkersCallback(inst)
 
-
-    enableLocation() {
-      if (this.locationPermission === 'denied') {
-      // 用户之前拒绝了权限，引导用户手动开启
-        this.$toast('请在浏览器设置中开启定位权限')
-
-      // 在安卓内嵌环境下，尝试调用原生方法
-        try {
-          window.AndroidInterface.openLocationSettings()
-        } catch (e) {
-        }
+    inst.search(s, e)
+    inst.setSearchCompleteCallback((rs) => {
+      const ok =
+        inst.getStatus &&
+        inst.getStatus() === window.BMAP_STATUS_SUCCESS &&
+        rs &&
+        rs.getPlan &&
+        rs.getPlan(0)
+      if (ok) {
+        map.value.setViewport([s, e])
       } else {
-        // 重新尝试获取定位
-        this.locateToCurrent()
+        proxy.$toast?.fail('路径规划失败')
       }
-    },
+    })
+  } catch (e) {
+    proxy.$toast?.fail('路线规划失败')
+  }
+}
+
+const initMap = () => {
+  try {
+    if (!window.BMap || !window.BMap.Map) {
+      setTimeout(() => {
+        initMap()
+      }, 500)
+      return
+    }
+
+    const m = new window.BMap.Map('map-container', {
+      enableMapClick: false,
+      displayOptions: {
+        building: false
+      }
+    })
+    map.value = m
+
+    const point = new window.BMap.Point(120.170700, 30.257069)
+    m.centerAndZoom(point, 18)
+
+    const mapStyle = [{
+      'featureType': 'background',
+      'elementType': 'geometry',
+      'stylers': {
+        'color': '#e6e8ebff'
+      }
+    }, {
+      'featureType': 'green',
+      'elementType': 'geometry',
+      'stylers': {
+        'color': '#b2e2bfff'
+      }
+    }, {
+      'featureType': 'highrailway',
+      'elementType': 'geometry',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }, {
+      'featureType': 'railway',
+      'elementType': 'geometry',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }, {
+      'featureType': 'vacationway',
+      'elementType': 'geometry',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }, {
+      'featureType': 'highwaysign',
+      'elementType': 'labels',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }, {
+      'featureType': 'highwaysign',
+      'elementType': 'labels.icon',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }, {
+      'featureType': 'nationalwaysign',
+      'elementType': 'labels.icon',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }, {
+      'featureType': 'nationalwaysign',
+      'elementType': 'labels',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }, {
+      'featureType': 'provincialwaysign',
+      'elementType': 'labels',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }, {
+      'featureType': 'provincialwaysign',
+      'elementType': 'labels.icon',
+      'stylers': {
+        'visibility': 'off'
+      }
+    }]
+
+    m.setMapStyleV2({ styleJson: mapStyle })
+    parseRouteTypeFromUrl()
+    startNavigation()
+  } catch (error) {
+    proxy.$toast?.fail('地图初始化失败')
+  }
+}
+
+const locateToCurrent = () => {
+  try { window.AndroidInterface?.showFullAdFromWeb?.() } catch {}
+  checkLocationPermission()
+  const geolocation = new window.BMap.Geolocation()
+  geolocation.getCurrentPosition(function (r) {
+    if (this.getStatus && this.getStatus() === window.BMAP_STATUS_SUCCESS) {
+      map.value.panTo(r.point)
+      startPoint.value = r.point
+      showLocationTip.value = false
+    } else {
+      const defaultPoint = new window.BMap.Point(120.170700, 30.257069)
+      map.value.panTo(defaultPoint)
+      startPoint.value = defaultPoint
+      showLocationTip.value = true
+    }
+  })
+}
+
+const checkLocationPermission = () => {
+  if (!navigator.permissions) return
+  navigator.permissions
+    .query({ name: 'geolocation' })
+    .then((result) => {
+      locationPermission.value = result.state
+      if (result.state === 'denied') {
+        showLocationTip.value = true
+      } else if (result.state === 'granted') {
+        showLocationTip.value = false
+      }
+    })
+    .catch(() => {})
+}
+
+const enableLocation = () => {
+  if (locationPermission.value === 'denied') {
+    proxy.$toast?.('请在浏览器设置中开启定位权限')
+    try {
+      window.AndroidInterface?.openLocationSettings?.()
+    } catch {}
+  } else {
+    locateToCurrent()
   }
 }
 </script>

@@ -1,11 +1,8 @@
-import Vue from 'vue'
-import Router from 'vue-router'
-
-Vue.use(Router)
+import { createRouter, createWebHashHistory } from 'vue-router'
 export const constantRoutes = [
   {
     path: '/404',
-    component: () => import('@/views/404'),
+    component: () => import('@/views/404.vue'),
     hidden: true
   },
   {
@@ -19,61 +16,58 @@ export const constantRoutes = [
   {
     path: '/BMap/index',
     name: 'BMap',
-    component: () => import('@/views/BMap/index'),
+    component: () => import('@/views/BMap/index.vue'),
   },
   {
     path: '/HeatMap/index',
     name: 'HeatMap',
-    component: () => import('@/views/HeatMap/index'),
+    component: () => import('@/views/HeatMap/index.vue'),
   },
   {
     path: '/RoutePlan/index',
     name: 'RoutePlan',
-    component: () => import('@/views/RoutePlan/index'),
+    component: () => import('@/views/RoutePlan/index.vue'),
   },
   {
     path: '/SingleRoutePlan/index',
     name: 'SingleRoutePlan',
-    component: () => import('@/views/SingleRoutePlan/index'),
+    component: () => import('@/views/SingleRoutePlan/index.vue'),
   },
   {
     path: '/QuickRoute/index',
     name: 'QuickRoute',
-    component: () => import('@/views/QuickRoute/index'),
+    component: () => import('@/views/QuickRoute/index.vue'),
   },
   {
     path: '/SimpleMap/index',
     name: 'SimpleMap',
-    component: () => import('@/views/SimpleMap/index'),
+    component: () => import('@/views/SimpleMap/index.vue'),
   },
   {
     path: '/UrlMap/index',
     name: 'UrlMap',
-    component: () => import('@/views/UrlMap/index'),
+    component: () => import('@/views/UrlMap/index.vue'),
   },
   {
     path: '/RealTimeTraffic/index',
     name: 'RealTimeTraffic',
-    component: () => import('@/views/RealTimeTraffic/index'),
+    component: () => import('@/views/RealTimeTraffic/index.vue'),
   },
   {
     path: '/SpeedCruise/index',
     name: 'SpeedCruise',
-    component: () => import('@/views/SpeedCruise/index'),
+    component: () => import('@/views/SpeedCruise/index.vue'),
   },
-  { path: '*', redirect: '/404'}
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/404'
+  }
 ]
 
-const createRouter = () => new Router({
-  // mode: 'history', // require service support
-  scrollBehavior: () => ({ y: 0 }),
+const router = createRouter({
+  history: createWebHashHistory(),
+  scrollBehavior: () => ({ top: 0 }),
   routes: constantRoutes
 })
-
-const router = createRouter()
-export function resetRouter() {
-  const newRouter = createRouter()
-  router.matcher = newRouter.matcher
-}
 
 export default router

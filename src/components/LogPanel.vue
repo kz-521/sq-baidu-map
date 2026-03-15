@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- 日志显示面板 -->
-    <div id="log-panel" v-if="showLogPanel" class="log-panel">
+    <div v-if="showLogPanel" class="log-panel">
       <div class="log-header">
         <span class="log-title">调试日志</span>
         <button class="log-clear-btn" @click="clearLogs">清空</button>
@@ -11,47 +11,42 @@
         <div
           v-for="(log, index) in logs"
           :key="index"
-          :class="['log-item', 'log-type-' + log.type]">
+          :class="['log-item', 'log-type-' + log.type]"
+        >
           {{ log.message }}
         </div>
       </div>
     </div>
     <!-- 显示日志按钮 -->
-    <button v-if="!showLogPanel" class="show-log-btn" @click="showLogPanel = true">显示调试日志</button>
+    <button v-if="!showLogPanel" class="show-log-btn" @click="showLogPanel = true">
+      显示调试日志
+    </button>
   </div>
 </template>
-
-<script>
-export default {
-  name: 'LogPanel',
-  data() {
-    return {
-      logs: [],
-      maxLogs: 50,
-      showLogPanel: false,
-    }
-  },
-  methods: {
-    addLog(message, type = 'info') {
-      const timestamp = new Date().toLocaleTimeString();
-      const formattedMessage = `[${timestamp}] ${message}`;
-      this.logs.push({ message: formattedMessage, type });
-      if (this.logs.length > this.maxLogs) {
-        this.logs.shift();
-      }
-      if (console && console[type === 'info' ? 'log' : type]) {
-        console[type === 'info' ? 'log' : type](message);
-      }
-    },
-    clearLogs() {
-      this.logs = [];
-    },
-  },
+<script setup>
+import { ref } from 'vue'
+const logs = ref([])
+const maxLogs = ref(50)
+const showLogPanel = ref(false)
+function addLog(message, type = 'info') {
+  const timestamp = new Date().toLocaleTimeString()
+  const formattedMessage = `[${timestamp}] ${message}`
+  logs.value.push({ message: formattedMessage, type })
+  if (logs.value.length > maxLogs.value) {
+    logs.value.shift()
+  }
+  if (console && console[type === 'info' ? 'log' : type]) {
+    console[type === 'info' ? 'log' : type](message)
+  }
 }
+function clearLogs() {
+  logs.value = []
+}
+// 如果需要让外部调用 addLog，可按需暴露（取决于你当前是怎么用的）
+// defineExpose({ addLog })
 </script>
-
 <style scoped>
-/* 日志面板样式 */
+/* 样式保持不变 */
 .log-panel {
   position: fixed;
   top: 10px;
@@ -68,7 +63,6 @@ export default {
   border-radius: 8px;
   border: 2px solid #0066ff;
 }
-
 .log-header {
   display: flex;
   justify-content: space-between;
@@ -77,13 +71,11 @@ export default {
   padding-bottom: 8px;
   border-bottom: 1px solid #0066ff;
 }
-
 .log-title {
   font-weight: bold;
   color: #ffff00;
   font-size: 16px;
 }
-
 .log-clear-btn,
 .log-close-btn {
   padding: 4px 8px;
@@ -94,36 +86,28 @@ export default {
   cursor: pointer;
   margin-left: 5px;
 }
-
 .log-clear-btn {
   background: #ff9900;
 }
-
 .log-close-btn {
   background: #ff0000;
 }
-
 .log-content {
   line-height: 1.5;
 }
-
 .log-item {
   margin-bottom: 5px;
   padding: 2px 0;
 }
-
 .log-type-info {
   color: #00ff00;
 }
-
 .log-type-warn {
   color: #ffff66;
 }
-
 .log-type-error {
   color: #ff6666;
 }
-
 .show-log-btn {
   position: fixed;
   bottom: 20px;
@@ -139,7 +123,6 @@ export default {
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
-
 .show-log-btn:active {
   background: #004dcc;
 }

@@ -1,4 +1,35 @@
 <template>
+  <div class="not-found">
+    <h1 class="code">404</h1>
+    <p class="message">页面不存在或已被移除</p>
+  </div>
+</template>
+
+<script setup>
+</script>
+
+<style scoped>
+.not-found {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  color: #333;
+}
+
+.code {
+  font-size: 72px;
+  margin: 0 0 12px;
+}
+
+.message {
+  font-size: 16px;
+}
+</style>
+
+<template>
   <div class="container">
     <div class="main">
       <div class="bullshit">

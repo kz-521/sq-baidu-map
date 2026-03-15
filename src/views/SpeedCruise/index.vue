@@ -82,214 +82,185 @@
   </div>
 </template>
 
-<script>
-
+<script setup>
+import { ref, onMounted, getCurrentInstance } from 'vue'
+import { useRoute } from 'vue-router'
 import userIconImg from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 import LocationTipBar from '@/components/LocationTipBar.vue'
 import ZoomControl from '@/components/ZoomControl.vue'
 import LocateButton from '@/components/LocateButton.vue'
+import { distanceMeters, ensureUserMarker } from '@/utils/mapCommon'
 
-export default {
-  name: 'SpeedCruise',
-  components: { MapLicenseInfo, LocationTipBar, ZoomControl, LocateButton, /* LogPanel */ },
-  data() {
-    return {
-      map: null,
-      showLocationTip: false,
-      locationPermission: '',
-      locationPoint: null,
-      prefetchedLocation: null,
-      isCenterInitialized: false,
-      currentMarker: null,
-      mapCenter: {},
-      // 防抖相关
-      isLocating: false, // 防止重复定位
-      soundEnabled: false,
-      // 限速设置相关
-      speedLimit: 1,
-      showSpeedLimitDialog: false,
-      tempSpeedLimit: 1,
-    }
-  },
-  async mounted() {
-    this.checkLocationPermission()
-  },
-  created() {
-    try {
-      const {lat, lng } = this.$route.query
-      this.prefetchedLocation = { lng, lat }
-      this.mapCenter = { lng, lat }
+const { proxy } = getCurrentInstance() || {}
+const route = useRoute()
 
-      if (navigator.geolocation) {
-        const vm = this
-        navigator.geolocation.getCurrentPosition(function(pos) {
-          try {
-            const lng = pos.coords.longitude
-            const lat = pos.coords.latitude
-            if (lng && lat) {
-              vm.prefetchedLocation = { lng, lat }
-            }
-          } catch (e) {}
-        }, function(err) {
-        }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 })
-      }
-    } catch (e) {
-      console.error('created钩子函数执行出错:', e)
-    }
-  },
+const map = ref(null)
+const showLocationTip = ref(false)
+const locationPermission = ref('')
+const locationPoint = ref(null)
+const prefetchedLocation = ref(null)
+const isCenterInitialized = ref(false)
+const currentMarker = ref(null)
+const mapCenter = ref({})
+const isLocating = ref(false)
+const soundEnabled = ref(false)
+const speedLimit = ref(1)
+const showSpeedLimitDialog = ref(false)
+const tempSpeedLimit = ref(1)
 
-  methods: {
-    onMapReady({ BMap, map }) {
-      try {
-        if (!window.BMap) { window.BMap = BMap }
-        this.map = map
-        // 居中：优先使用预取定位；否则等待静默定位后再居中，避免先居中到默认位置造成跳动
-      if (this.prefetchedLocation) {
-        const p = new BMap.Point(this.prefetchedLocation.lng, this.prefetchedLocation.lat)
-        this.map.centerAndZoom(p, MAP_CONFIG.DEFAULT_ZOOM)
-        this.locationPoint = p
-        this.updateCurrentMarker(p)
-        this.showLocationTip = false
-        this.isCenterInitialized = true
-      } 
-      } catch (e) {
-      }
-    },
-    // 定位到当前位置：使用created钩子中已存储的URL参数
-    locateToCurrent() {
-      if (this.isLocating) return // 防抖处理
-      this.isLocating = true
-      try {
-          const { lng, lat } = this.prefetchedLocation;
-          const point = new window.BMap.Point(lng, lat);
-          const center = this.map.getCenter();
-          const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: lng, lat: lat });
-          
-          if (!this.isCenterInitialized) {
-            this.map.centerAndZoom(point, 16);
-            this.isCenterInitialized = true;
-          } else if (dist > 50) {
-            this.map.panTo(point);
-          }
-          
-          this.locationPoint = point;
-          this.updateCurrentMarker(point);
-      } catch (error) {
-        console.error('使用prefetchedLocation进行定位时出错:', error);
-      } finally {
-        this.isLocating = false;
-        this.showLocationTip = false;
-      }
-    },
-    // 检查定位权限
-    checkLocationPermission() {
-      if (!navigator.permissions) return
-      navigator.permissions.query({ name: 'geolocation' }).then((res) => {
-        this.locationPermission = res.state
-        this.showLocationTip = res.state === 'denied'
-      }).catch((e) => { console.error('定位权限查询失败:', e && (e.message || e)) })
-    },
-
-    enableLocation() {
-      if (this.locationPermission === 'denied') {
-        this.$message && this.$message.info('请在浏览器/应用中开启定位权限')
-        this.callAndroidMethod('openLocationSettings')
-      } else {
-        this.locateToCurrent()
-      }
-    },
-    // 统一封装 Android 注入对象调用
-    callAndroidMethod(methodName, ...args) {
-      try {
-        const android = window && window.AndroidInterface
-        if (android && typeof android[methodName] === 'function') {
-          android[methodName](...args)
-          return true
-        }
-        return false
-      } catch (e) {
-        console.log('调用 Android 接口失败:', methodName, e)
-        return false
-      }
-    },
-
-    // 切换声音状态
-    toggleSound() {
-      this.soundEnabled = !this.soundEnabled;
-    },
-
-    // 打开限速设置弹窗
-    openSpeedLimitDialog() {
-      this.tempSpeedLimit = this.speedLimit;
-      this.showSpeedLimitDialog = true;
-    },
-
-    // 确认修改限速
-    confirmSpeedLimit() {
-      // 验证输入值
-      const limit = parseFloat(this.tempSpeedLimit);
-      if (limit && limit > 0 && limit <= 200) {
-        this.speedLimit = Math.round(limit * 100) / 100; // 保留两位小数
-        this.showSpeedLimitDialog = false;
-      } else {
-        this.$message && this.$message.error('请输入有效的限速值（1-200）');
-      }
-    },
-
-    // 取消修改限速
-    cancelSpeedLimit() {
-      this.showSpeedLimitDialog = false;
-    },
-    // 验证限速输入
-    validateSpeedInput() {
-      // 确保值最多有两位小数
-      if (this.tempSpeedLimit && !isNaN(this.tempSpeedLimit)) {
-        const num = parseFloat(this.tempSpeedLimit);
-        this.tempSpeedLimit = Math.round(num * 100) / 100;
-      }
-    },
-        // 距离计算（米）- 使用Haversine公式
-    distanceMeters(a, b) {
-      try {
-        if (!a || !b) return 0
-        const lngLatToRad = (d) => d * Math.PI / 180
-        const R = 6371000 // 地球半径（米）
-        const lat1 = lngLatToRad(a.lat || a.getLat())
-        const lat2 = lngLatToRad(b.lat || b.getLat())
-        const dLat = lat2 - lat1
-        const dLng = lngLatToRad((b.lng || b.getLng()) - (a.lng || a.getLng()))
-        const s = 2 * Math.asin(Math.sqrt(
-          Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2
-        ))
-        return R * s
-      } catch (e) {
-        console.warn('距离计算失败:', e)
-        return 0
-      }
-    },
-
-    // 更新/创建当前用户位置图标
-    updateCurrentMarker(point) {
-      try {
-        // 调整用户图标尺寸，使其更自然（宽高比约为1:1.2）
-        const size = new window.BMap.Size(32, 38)
-        const icon = new window.BMap.Icon(userIconImg, size, {
-          imageSize: size,
-          anchor: new window.BMap.Size(16, 19), // 锚点居中
-        })
-        if (this.currentMarker) {
-          this.currentMarker.setPosition(point)
-          this.currentMarker.setIcon(icon)
-        } else {
-          this.currentMarker = new window.BMap.Marker(point, { icon })
-          this.map.addOverlay(this.currentMarker)
-        }
-      } catch (e) {
-        console.warn('更新用户位置图标失败:', e)
-      }
-    },
+// 初始化坐标（URL 参数 + 一次额外高精度定位覆盖）
+try {
+  const { lat, lng } = route.query
+  if (lng && lat) {
+    prefetchedLocation.value = { lng, lat }
+    mapCenter.value = { lng, lat }
   }
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        try {
+          const glng = pos.coords.longitude
+          const glat = pos.coords.latitude
+          if (glng && glat) {
+            prefetchedLocation.value = { lng: glng, lat: glat }
+          }
+        } catch (e) {}
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+    )
+  }
+} catch (e) {
+  console.error('created钩子函数执行出错:', e)
+}
+
+onMounted(() => {
+  checkLocationPermission()
+})
+
+const onMapReady = ({ BMap, map: mapInstance }) => {
+  try {
+    if (!window.BMap) window.BMap = BMap
+    map.value = mapInstance
+    if (prefetchedLocation.value) {
+      const p = new BMap.Point(prefetchedLocation.value.lng, prefetchedLocation.value.lat)
+      map.value.centerAndZoom(p, 15)
+      locationPoint.value = p
+      updateCurrentMarker(p)
+      showLocationTip.value = false
+      isCenterInitialized.value = true
+    }
+  } catch (e) {}
+}
+
+// 定位到当前位置：使用 prefetchedLocation
+const locateToCurrent = () => {
+  if (isLocating.value) return
+  isLocating.value = true
+  try {
+    if (!prefetchedLocation.value || !map.value) return
+    const { lng, lat } = prefetchedLocation.value
+    const point = new window.BMap.Point(lng, lat)
+    const center = map.value.getCenter()
+    const dist = distanceMeters(
+      { lng: center.lng, lat: center.lat },
+      { lng, lat }
+    )
+
+    if (!isCenterInitialized.value) {
+      map.value.centerAndZoom(point, 16)
+      isCenterInitialized.value = true
+    } else if (dist > 50) {
+      map.value.panTo(point)
+    }
+
+    locationPoint.value = point
+    updateCurrentMarker(point)
+  } catch (error) {
+    console.error('使用prefetchedLocation进行定位时出错:', error)
+  } finally {
+    isLocating.value = false
+    showLocationTip.value = false
+  }
+}
+
+// 检查定位权限
+const checkLocationPermission = () => {
+  if (!navigator.permissions) return
+  navigator.permissions
+    .query({ name: 'geolocation' })
+    .then((res) => {
+      locationPermission.value = res.state
+      showLocationTip.value = res.state === 'denied'
+    })
+    .catch((e) => {
+      console.error('定位权限查询失败:', e && (e.message || e))
+    })
+}
+
+const enableLocation = () => {
+  if (locationPermission.value === 'denied') {
+    proxy?.$message && proxy.$message.info('请在浏览器/应用中开启定位权限')
+    callAndroidMethod('openLocationSettings')
+  } else {
+    locateToCurrent()
+  }
+}
+
+// 统一封装 Android 注入对象调用
+const callAndroidMethod = (methodName, ...args) => {
+  try {
+    const android = window && window.AndroidInterface
+    if (android && typeof android[methodName] === 'function') {
+      android[methodName](...args)
+      return true
+    }
+    return false
+  } catch (e) {
+    console.log('调用 Android 接口失败:', methodName, e)
+    return false
+  }
+}
+
+// 切换声音状态
+const toggleSound = () => {
+  soundEnabled.value = !soundEnabled.value
+}
+
+// 打开限速设置弹窗
+const openSpeedLimitDialog = () => {
+  tempSpeedLimit.value = speedLimit.value
+  showSpeedLimitDialog.value = true
+}
+
+// 确认修改限速
+const confirmSpeedLimit = () => {
+  const limit = parseFloat(tempSpeedLimit.value)
+  if (limit && limit > 0 && limit <= 200) {
+    speedLimit.value = Math.round(limit * 100) / 100
+    showSpeedLimitDialog.value = false
+  } else {
+    proxy?.$message && proxy.$message.error('请输入有效的限速值（1-200）')
+  }
+}
+
+// 取消修改限速
+const cancelSpeedLimit = () => {
+  showSpeedLimitDialog.value = false
+}
+
+// 验证限速输入（两位小数）
+const validateSpeedInput = () => {
+  if (tempSpeedLimit.value && !isNaN(tempSpeedLimit.value)) {
+    const num = parseFloat(tempSpeedLimit.value)
+    tempSpeedLimit.value = Math.round(num * 100) / 100
+  }
+}
+
+// 更新/创建当前用户位置图标
+const updateCurrentMarker = (point) => {
+  currentMarker.value = ensureUserMarker(map.value, currentMarker.value, point, userIconImg)
 }
 </script>
 <style lang="scss" scoped>

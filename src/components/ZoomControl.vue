@@ -15,52 +15,43 @@
     </div>
   </div>
 </template>
-
-<script>
-export default {
-  name: 'ZoomControl',
-  props: {
-    // 地图实例
-    map: {
-      type: Object,
-      default: null
-    },
-    // 最小缩放级别
-    minZoom: {
-      type: Number,
-      default: 3
-    },
-    // 最大缩放级别
-    maxZoom: {
-      type: Number,
-      default: 19
-    },
-    // 是否显示图层切换按钮
-    showLayerButton: {
-      type: Boolean,
-      default: false
-    }
+<script setup>
+const props = defineProps({
+  // 地图实例
+  map: {
+    type: Object,
+    default: null
   },
-  methods: {
-    /**
-     * 缩放地图
-     * @param {Number} delta - 缩放变化量，1 表示放大，-1 表示缩小
-     */
-    zoomIn(delta) {
-      const currentZoom = this.map.getZoom()
-      const target = delta === 1 ? Math.min(currentZoom + 1, this.maxZoom) : Math.max(currentZoom - 1, this.minZoom)
-      this.map.setZoom(target)
-    },
-    /**
-     * 切换图层
-     */
-    toggleLayer() {
-      this.$emit('toggle-layer');
-    }
+  // 最小缩放级别
+  minZoom: {
+    type: Number,
+    default: 3
+  },
+  // 最大缩放级别
+  maxZoom: {
+    type: Number,
+    default: 19
+  },
+  // 是否显示图层切换按钮
+  showLayerButton: {
+    type: Boolean,
+    default: false
   }
+})
+const emit = defineEmits(['toggle-layer'])
+function zoomIn(delta) {
+  if (!props.map || typeof props.map.getZoom !== 'function') return
+  const currentZoom = props.map.getZoom()
+  const target =
+    delta === 1
+      ? Math.min(currentZoom + 1, props.maxZoom)
+      : Math.max(currentZoom - 1, props.minZoom)
+  props.map.setZoom(target)
+}
+function toggleLayer() {
+  emit('toggle-layer')
 }
 </script>
-
 <style lang="scss" scoped>
 .zoom-control {
   position: fixed;
@@ -80,7 +71,6 @@ export default {
   -webkit-user-select: none;
   touch-action: manipulation;
 }
-
 /* 缩放按钮样式 */
 .zoom-btn {
   width: 9vw; /* 36px转换为vw单位 */
@@ -91,30 +81,28 @@ export default {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  
+
   &:active {
     background-color: #f5f7fa;
     transform: scale(0.95);
   }
-  
+
   &:hover {
     background-color: #f5f7fa;
   }
-  
+
   i {
     font-size: 4vw;
     color: #409EFF;
     font-weight: bold;
   }
 }
-
 .layer-btn {
   img {
     width: 6vw;
     height: 6vw;
   }
 }
-
 /* 分隔线样式 */
 .separator {
   width: 6vw;

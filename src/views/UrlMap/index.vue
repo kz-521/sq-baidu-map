@@ -28,115 +28,101 @@
   </div>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import startIcon from '@/assets/start.png'
 
-export default {
-  name: 'UrlMap',
-  data() {
-    return {
-      map: null,
-      centerMarker: null,
-      // 默认中心点（北京天安门），如果 URL 中没有传经纬度就用这个
-      mapCenter: { lng: 116.391, lat: 39.906217 },
-      // 按钮显示控制：默认隐藏
-      showJumpButton: false,
-      showLocateButton: false,
-    }
-  },
-  created() {
-    // 从 URL 的 query 中读取经纬度参数 ?lng=xxx&lat=yyy
-    try {
-      const { lng, lat, isJump, showCurrent } = this.$route.query || {}
-      const lngNum = parseFloat(lng)
-      const latNum = parseFloat(lat)
-      if (!isNaN(lngNum) && !isNaN(latNum)) {
-        this.mapCenter = { lng: lngNum, lat: latNum }
-      }
+const route = useRoute()
 
-      // 控制按钮显示：isJump=true 显示“跳转”按钮；showCurrent=true 显示“定位”按钮
-      this.showJumpButton = isJump === 'true'
-      this.showLocateButton = showCurrent === 'true'
-    } catch (e) {
-      console.error('解析 URL 经纬度参数失败:', e)
-    }
-  },
-  mounted() {
-    // 将方法挂载到 window 对象，供 Android 调用（确保 this 指向当前组件实例）
-    const vm = this
-    window.bridgeSetCenterByLngLat = function(lng, lat) {
-      vm.setCenterByLngLat(lng, lat)
-    }
-    console.log('Vue 方法已暴露给 Android: window.bridgeSetCenterByLngLat(lng, lat)')
-  },
-  methods: {
-    // 地图准备好时，记录 map 实例并按当前中心点居中
-    onMapReady({ BMap, map }) {
-      try {
-        if (!window.BMap) window.BMap = BMap
-        this.map = map
-        if (this.mapCenter && this.mapCenter.lng && this.mapCenter.lat) {
-          const p = new BMap.Point(this.mapCenter.lng, this.mapCenter.lat)
-          this.map.centerAndZoom(p, 15)
-          this.updateCenterMarker(p)
-        }
-      } catch (e) {
-        console.error('地图初始化失败:', e)
-      }
-    },
-    // 点击定位按钮：把视角拉回到当前中心点
-    locateToCurrent() {
-      try {
-        if (!this.map || !this.mapCenter) return
-        const { lng, lat } = this.mapCenter
-        if (!lng || !lat) return
-        const point = new window.BMap.Point(lng, lat)
-        this.map.panTo(point)
-      } catch (e) {
-        console.error('定位到地图中心失败:', e)
-      }
-    },
-    // 对外暴露：通过传入经纬度设置地图中心和中心 Marker
-    setCenterByLngLat(lng, lat) {
-      try {
-        const lngNum = parseFloat(lng)
-        const latNum = parseFloat(lat)
-        if (isNaN(lngNum) || isNaN(latNum)) return
+const map = ref(null)
+const centerMarker = ref(null)
+const mapCenter = ref({ lng: 116.391, lat: 39.906217 })
+const showJumpButton = ref(false)
+const showLocateButton = ref(false)
 
-        // 更新数据中的中心点
-        this.mapCenter = { lng: lngNum, lat: latNum }
+try {
+  const { lng, lat, isJump, showCurrent } = route.query || {}
+  const lngNum = parseFloat(lng)
+  const latNum = parseFloat(lat)
+  if (!isNaN(lngNum) && !isNaN(latNum)) {
+    mapCenter.value = { lng: lngNum, lat: latNum }
+  }
+  showJumpButton.value = isJump === 'true'
+  showLocateButton.value = showCurrent === 'true'
+} catch (e) {
+  console.error('解析 URL 经纬度参数失败:', e)
+}
 
-        // 如果地图已经初始化，则立即更新视图和 Marker
-        if (this.map && window.BMap) {
-          const point = new window.BMap.Point(lngNum, latNum)
-          this.map.centerAndZoom(point, this.map.getZoom ? this.map.getZoom() : 15)
-          this.updateCenterMarker(point)
-        }
-      } catch (e) {
-        console.error('setCenterByLngLat 调用失败:', e)
-      }
-    },
-    // 在地图中心添加/更新一个 Marker
-    updateCenterMarker(point) {
-      try {
-        if (!this.map || !point) return
-        const size = new window.BMap.Size(30, 37)
-        const icon = new window.BMap.Icon(startIcon, size, {
-          imageSize: size,
-          anchor: new window.BMap.Size(15, 37),
-        })
-        if (this.centerMarker) {
-          this.centerMarker.setPosition(point)
-          this.centerMarker.setIcon(icon)
-        } else {
-          this.centerMarker = new window.BMap.Marker(point, { icon })
-          this.map.addOverlay(this.centerMarker)
-        }
-      } catch (e) {
-        console.error('更新中心点 Marker 失败:', e)
-      }
-    },
-  },
+onMounted(() => {
+  const vm = { setCenterByLngLat }
+  window.bridgeSetCenterByLngLat = function (lng, lat) {
+    vm.setCenterByLngLat(lng, lat)
+  }
+  console.log('Vue 方法已暴露给 Android: window.bridgeSetCenterByLngLat(lng, lat)')
+})
+
+const onMapReady = ({ BMap, map: mapInstance }) => {
+  try {
+    if (!window.BMap) window.BMap = BMap
+    map.value = mapInstance
+    if (mapCenter.value && mapCenter.value.lng && mapCenter.value.lat) {
+      const p = new BMap.Point(mapCenter.value.lng, mapCenter.value.lat)
+      map.value.centerAndZoom(p, 15)
+      updateCenterMarker(p)
+    }
+  } catch (e) {
+    console.error('地图初始化失败:', e)
+  }
+}
+
+const locateToCurrent = () => {
+  try {
+    if (!map.value || !mapCenter.value) return
+    const { lng, lat } = mapCenter.value
+    if (!lng || !lat) return
+    const point = new window.BMap.Point(lng, lat)
+    map.value.panTo(point)
+  } catch (e) {
+    console.error('定位到地图中心失败:', e)
+  }
+}
+
+const setCenterByLngLat = (lng, lat) => {
+  try {
+    const lngNum = parseFloat(lng)
+    const latNum = parseFloat(lat)
+    if (isNaN(lngNum) || isNaN(latNum)) return
+    mapCenter.value = { lng: lngNum, lat: latNum }
+    if (map.value && window.BMap) {
+      const point = new window.BMap.Point(lngNum, latNum)
+      map.value.centerAndZoom(point, map.value.getZoom ? map.value.getZoom() : 15)
+      updateCenterMarker(point)
+    }
+  } catch (e) {
+    console.error('setCenterByLngLat 调用失败:', e)
+  }
+}
+
+const updateCenterMarker = (point) => {
+  try {
+    if (!map.value || !point) return
+    const size = new window.BMap.Size(30, 37)
+    const icon = new window.BMap.Icon(startIcon, size, {
+      imageSize: size,
+      anchor: new window.BMap.Size(15, 37)
+    })
+    if (centerMarker.value) {
+      centerMarker.value.setPosition(point)
+      centerMarker.value.setIcon(icon)
+    } else {
+      const marker = new window.BMap.Marker(point, { icon })
+      map.value.addOverlay(marker)
+      centerMarker.value = marker
+    }
+  } catch (e) {
+    console.error('更新中心点 Marker 失败:', e)
+  }
 }
 </script>
 

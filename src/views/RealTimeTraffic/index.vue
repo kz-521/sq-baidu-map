@@ -16,200 +16,161 @@
   </div>
 </template>
 
-<script>
-
+<script setup>
+import { ref, onMounted, getCurrentInstance } from 'vue'
+import { useRoute } from 'vue-router'
 import userIconImg from '@/assets/user.png'
 import MapLicenseInfo from '@/components/MapLicenseInfo.vue'
 import LocationTipBar from '@/components/LocationTipBar.vue'
 import ZoomControl from '@/components/ZoomControl.vue'
 import LocateButton from '@/components/LocateButton.vue'
+import { distanceMeters, ensureUserMarker } from '@/utils/mapCommon'
 
-export default {
-  name: 'RealTimeTraffic',
-  components: { MapLicenseInfo, LocationTipBar, ZoomControl, LocateButton },
-  data() {
-    return {
-      map: null,
-      showLocationTip: false,
-      locationPermission: 'prompt',
-      locationPoint: null,
-      prefetchedLocation: null,
-      isCenterInitialized: false,
-      currentMarker: null,
-      mapCenter: {},
-      // 防抖相关
-      isLocating: false, // 防止重复定位
-    }
-  },
-  async mounted() {
-    this.checkLocationPermission()
-  },
-  created() {
-    try {
-      // 直接使用URL中的百度坐标系经纬度
-      const { lat, lng } = this.$route.query
-      this.prefetchedLocation = { lng, lat }
-      this.mapCenter = { lng, lat }
-    } catch (e) {}
-  },
+const { proxy } = getCurrentInstance() || {}
+const route = useRoute()
 
-  methods: {
-        // 切换地图类型（普通地图 <-> 卫星地图）
-    toggleMapType() {
-      if (!this.map || !window.BMap) return
-      try {
-        this.isSatellite = !this.isSatellite
-        // 百度地图类型常量
-        let mapType
-        if (this.isSatellite) {
-          // 卫星地图
-          if (window.BMap && window.BMap.MapType && window.BMap.MapType.SATELLITE_MAP) {
-            mapType = window.BMap.MapType.SATELLITE_MAP
-          } else if (window.BMAP_SATELLITE_MAP) {
-            mapType = window.BMAP_SATELLITE_MAP
-          } else {
-            // 使用数字常量：2 表示卫星地图
-            mapType = 2
-          }
-        } else {
-          // 普通地图
-          if (window.BMap && window.BMap.MapType && window.BMap.MapType.NORMAL_MAP) {
-            mapType = window.BMap.MapType.NORMAL_MAP
-          } else if (window.BMAP_NORMAL_MAP) {
-            mapType = window.BMAP_NORMAL_MAP
-          } else {
-            // 使用数字常量：1 表示普通地图
-            mapType = 1
-          }
-        }
-        this.map.setMapType(mapType)
-      } catch (e) {
-        console.error('切换地图类型失败:', e)
-      }
-    },
-    // 地图组件就绪回调
-    onMapReady({ BMap, map }) {
-      try {
-        if (!window.BMap) { window.BMap = BMap }
-        this.map = map
-        // 居中：优先使用预取定位；否则等待静默定位后再居中，避免先居中到默认位置造成跳动
-        if (this.prefetchedLocation) {
-          const p = new BMap.Point(this.prefetchedLocation.lng, this.prefetchedLocation.lat)
-          this.map.centerAndZoom(p, 15)
-          this.locationPoint = p
-          this.updateCurrentMarker(p)
-          this.showLocationTip = false
-          this.isCenterInitialized = true
-        }
-      } catch (e) {
-      }
-    },
-    // 定位到当前位置：使用URL中的经纬度参数
-    locateToCurrent() {
-      if (this.isLocating) return // 防抖处理
-      this.isLocating = true
-      try {
-        // 直接使用created钩子中已存储的prefetchedLocation
-        const { lng, lat } = this.prefetchedLocation;
-        // 验证经纬度有效性
-        const point = new window.BMap.Point(lng, lat);
-        const center = this.map.getCenter();
-        const dist = this.distanceMeters({ lng: center.lng, lat: center.lat }, { lng: lng, lat: lat });
-          
-          if (!this.isCenterInitialized) {
-            this.map.centerAndZoom(point, 16);
-            this.isCenterInitialized = true;
-          } else if (dist > 50) {
-            this.map.panTo(point);
-          }
-          
-          this.locationPoint = point;
-          this.updateCurrentMarker(point);
-          console.log('成功使用URL中的经纬度参数进行定位');
-      } catch (error) {
-        console.error('解析URL经纬度参数时出错:', error);
-      } finally {
-        this.isLocating = false;
-        this.showLocationTip = false;
-      }
-    },
-    // 检查定位权限
-    checkLocationPermission() {
-      if (!navigator.permissions) return
-      navigator.permissions.query({ name: 'geolocation' }).then((res) => {
-        this.locationPermission = res.state
-        this.showLocationTip = res.state === 'denied'
-      }).catch((e) => { console.error('定位权限查询失败:', e && (e.message || e)) })
-    },
-    enableLocation() {
-      if (this.locationPermission === 'denied') {
-        this.$message && this.$message.info('请在浏览器/应用中开启定位权限')
-        this.callAndroidMethod('openLocationSettings')
-      } else {
-        this.locateToCurrent()
-      }
-    },
+const map = ref(null)
+const showLocationTip = ref(false)
+const locationPermission = ref('prompt')
+const locationPoint = ref(null)
+const prefetchedLocation = ref(null)
+const isCenterInitialized = ref(false)
+const currentMarker = ref(null)
+const mapCenter = ref({})
+const isLocating = ref(false)
+const isSatellite = ref(false)
 
-    // 统一封装 Android 注入对象调用
-    callAndroidMethod(methodName, ...args) {
-      try {
-        const android = window && window.AndroidInterface
-        if (android && typeof android[methodName] === 'function') {
-          android[methodName](...args)
-          return true
-        }
-        return false
-      } catch (e) {
-        console.log('调用 Android 接口失败:', methodName, e)
-        return false
-      }
-    },
-
-    // 距离计算（米）- 使用Haversine公式
-    distanceMeters(a, b) {
-      try {
-        if (!a || !b) return 0
-
-        const lngLatToRad = (d) => d * Math.PI / 180
-        const R = 6371000 // 地球半径（米）
-
-        const lat1 = lngLatToRad(a.lat || a.getLat())
-        const lat2 = lngLatToRad(b.lat || b.getLat())
-        const dLat = lat2 - lat1
-        const dLng = lngLatToRad((b.lng || b.getLng()) - (a.lng || a.getLng()))
-
-        const s = 2 * Math.asin(Math.sqrt(
-          Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2
-        ))
-
-        return R * s
-      } catch (e) {
-        console.warn('距离计算失败:', e)
-        return 0
-      }
-    },
-
-    // 更新/创建当前用户位置图标
-    updateCurrentMarker(point) {
-      try {
-        // 调整用户图标尺寸，使其更自然（宽高比约为1:1.2）
-        const size = new window.BMap.Size(32, 38)
-        const icon = new window.BMap.Icon(userIconImg, size, {
-          imageSize: size,
-          anchor: new window.BMap.Size(16, 19), // 锚点居中
-        })
-        if (this.currentMarker) {
-          this.currentMarker.setPosition(point)
-          this.currentMarker.setIcon(icon)
-        } else {
-          this.currentMarker = new window.BMap.Marker(point, { icon })
-          this.map.addOverlay(this.currentMarker)
-        }
-      } catch (e) {
-        console.warn('更新用户位置图标失败:', e)
-      }
-    },
+// 初始化 URL 坐标
+try {
+  const { lat, lng } = route.query
+  if (lng && lat) {
+    prefetchedLocation.value = { lng, lat }
+    mapCenter.value = { lng, lat }
   }
+} catch (e) {}
+
+onMounted(() => {
+  checkLocationPermission()
+})
+
+// 切换地图类型（普通地图 <-> 卫星地图）
+const toggleMapType = () => {
+  if (!map.value || !window.BMap) return
+  try {
+    isSatellite.value = !isSatellite.value
+    let mapType
+    if (isSatellite.value) {
+      if (window.BMap && window.BMap.MapType && window.BMap.MapType.SATELLITE_MAP) {
+        mapType = window.BMap.MapType.SATELLITE_MAP
+      } else if (window.BMAP_SATELLITE_MAP) {
+        mapType = window.BMAP_SATELLITE_MAP
+      } else {
+        mapType = 2
+      }
+    } else {
+      if (window.BMap && window.BMap.MapType && window.BMap.MapType.NORMAL_MAP) {
+        mapType = window.BMap.MapType.NORMAL_MAP
+      } else if (window.BMAP_NORMAL_MAP) {
+        mapType = window.BMAP_NORMAL_MAP
+      } else {
+        mapType = 1
+      }
+    }
+    map.value.setMapType(mapType)
+  } catch (e) {
+    console.error('切换地图类型失败:', e)
+  }
+}
+
+// 地图组件就绪回调
+const onMapReady = ({ BMap, map: mapInstance }) => {
+  try {
+    if (!window.BMap) window.BMap = BMap
+    map.value = mapInstance
+    if (prefetchedLocation.value) {
+      const p = new BMap.Point(prefetchedLocation.value.lng, prefetchedLocation.value.lat)
+      map.value.centerAndZoom(p, 15)
+      locationPoint.value = p
+      updateCurrentMarker(p)
+      showLocationTip.value = false
+      isCenterInitialized.value = true
+    }
+  } catch (e) {}
+}
+
+// 定位到当前位置：使用 URL 中的经纬度参数
+const locateToCurrent = () => {
+  if (isLocating.value) return
+  isLocating.value = true
+  try {
+    if (!prefetchedLocation.value || !map.value) return
+    const { lng, lat } = prefetchedLocation.value
+    const point = new window.BMap.Point(lng, lat)
+    const center = map.value.getCenter()
+    const dist = distanceMeters(
+      { lng: center.lng, lat: center.lat },
+      { lng, lat }
+    )
+
+    if (!isCenterInitialized.value) {
+      map.value.centerAndZoom(point, 16)
+      isCenterInitialized.value = true
+    } else if (dist > 50) {
+      map.value.panTo(point)
+    }
+
+    locationPoint.value = point
+    updateCurrentMarker(point)
+    console.log('成功使用URL中的经纬度参数进行定位')
+  } catch (error) {
+    console.error('解析URL经纬度参数时出错:', error)
+  } finally {
+    isLocating.value = false
+    showLocationTip.value = false
+  }
+}
+
+// 检查定位权限
+const checkLocationPermission = () => {
+  if (!navigator.permissions) return
+  navigator.permissions
+    .query({ name: 'geolocation' })
+    .then((res) => {
+      locationPermission.value = res.state
+      showLocationTip.value = res.state === 'denied'
+    })
+    .catch((e) => {
+      console.error('定位权限查询失败:', e && (e.message || e))
+    })
+}
+
+const enableLocation = () => {
+  if (locationPermission.value === 'denied') {
+    proxy?.$message && proxy.$message.info('请在浏览器/应用中开启定位权限')
+    callAndroidMethod('openLocationSettings')
+  } else {
+    locateToCurrent()
+  }
+}
+
+// 统一封装 Android 注入对象调用
+const callAndroidMethod = (methodName, ...args) => {
+  try {
+    const android = window && window.AndroidInterface
+    if (android && typeof android[methodName] === 'function') {
+      android[methodName](...args)
+      return true
+    }
+    return false
+  } catch (e) {
+    console.log('调用 Android 接口失败:', methodName, e)
+    return false
+  }
+}
+
+// 更新/创建当前用户位置图标
+const updateCurrentMarker = (point) => {
+  currentMarker.value = ensureUserMarker(map.value, currentMarker.value, point, userIconImg)
 }
 </script>
 

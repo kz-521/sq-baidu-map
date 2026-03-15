@@ -3,13 +3,9 @@
     审图号：GS(2022)460号 北京百度网讯科技有限公司
   </div>
 </template>
-
-<script>
-export default {
-  name: 'MapLicenseInfo'
-}
+<script setup>
+// 无逻辑，仅保留组件名可选（通常不需要显式 name）
 </script>
-
 <style lang="scss" scoped>
 .map-license-info {
   position: fixed;

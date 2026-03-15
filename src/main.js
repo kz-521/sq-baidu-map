@@ -1,42 +1,25 @@
-import 'babel-polyfill'
-import Es6Promise from 'es6-promise'
-require('es6-promise').polyfill()
-Es6Promise.polyfill()
-import Vue from 'vue'
-// import axios from 'axios'
+import { createApp } from 'vue'
+import 'normalize.css/normalize.css'
 
-import 'normalize.css/normalize.css' // A modern alternative to CSS resets
-
-// 移除未使用的 Element UI 组件注册，仅保留图标样式
-// import { Icon } from 'element-ui'
-import 'element-ui/lib/theme-chalk/icon.css'
-
-// 按需仅保留 Vant Toast
+// 按需仅保留 Vant Toast（Vue 3 版）
 import { Toast } from 'vant'
-import 'vant/lib/toast/style'
+import 'vant/es/toast/style'
 
-import '@/styles/index.scss' // global css
+import '@/styles/index.scss'
 
-import App from './App'
+import App from './App.vue'
 import router from './router'
-import BaiduMap from 'vue-baidu-map'
+import BaiduMap from 'vue-baidu-map-3x'
 
-// 全局挂载 Vant Toast
-Vue.prototype.$toast = Toast
+const app = createApp(App)
 
-// vConsole 移动端调试工具 - 仅在开发环境启用
-  // const VConsole = require('vconsole')
-  // new VConsole()
+// 全局挂载 Vant Toast（等同于原来的 Vue.prototype.$toast）
+app.config.globalProperties.$toast = Toast
 
-// 注册 vue-baidu-map 插件（使用你的 AK）
-Vue.use(BaiduMap, {
+// 注册 Vue3 版百度地图组件库
+app.use(BaiduMap, {
   ak: 'JZ7exm3yUlWSewreBHs0celsfohscaod'
 })
 
-Vue.config.productionTip = false
-
-new Vue({
-  el: '#app',
-  router,
-  render: h => h(App)
-})
+app.use(router)
+app.mount('#app')
