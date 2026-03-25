@@ -26,21 +26,21 @@ module.exports = {
   assetsDir: 'static',
   lintOnSave: process.env.NODE_ENV === 'development',
   productionSourceMap: false,
-  
+
   devServer: {
     port: port,
     // open: false,
     open: true,
-    host: '192.168.1.5',
+    host: '192.168.10.169',
     overlay: {
       warnings: false,
       errors: true
     }
   },
-  
+
   configureWebpack: config => {
     const plugins = []
-    
+
     // 生产环境优化
     if (isProduction) {
       // Gzip 压缩
@@ -54,7 +54,7 @@ module.exports = {
           deleteOriginalAssets: false
         })
       )
-      
+
       // 代码分割优化
       config.optimization = {
         splitChunks: {
@@ -100,7 +100,7 @@ module.exports = {
           name: 'runtime'
         }
       }
-      
+
       // 外部化依赖（使用 CDN）
       // ⚠️ 如果 CDN 不可用，注释掉下面的代码
       // config.externals = {
@@ -109,7 +109,7 @@ module.exports = {
       //   axios: 'axios'
       // }
     }
-    
+
     return {
       name: name,
       resolve: {
@@ -123,11 +123,11 @@ module.exports = {
       plugins
     }
   },
-  
+
   chainWebpack: config => {
     // 入口前置 babel-polyfill
     try { config.entry('app').prepend('babel-polyfill') } catch (e) {}
-    
+
     // HTML 插件配置
     config.plugin('html').tap(args => {
       args[0].title = name
@@ -138,7 +138,7 @@ module.exports = {
       // }
       return args
     })
-    
+
     // 图片压缩优化
     config.module
       .rule('images')
@@ -149,7 +149,7 @@ module.exports = {
         limit: 10240, // 小于 10KB 的图片转 base64
         name: 'static/img/[name].[hash:8].[ext]'
       })
-    
+
     // 预加载优化
     config.plugin('preload').tap(() => [
       {
@@ -158,7 +158,7 @@ module.exports = {
         include: 'initial'
       }
     ])
-    
+
     // 预获取优化
     config.plugin('prefetch').tap(options => {
       options[0].fileBlacklist = options[0].fileBlacklist || []
@@ -166,11 +166,10 @@ module.exports = {
       return options
     })
   },
-  
+
   // CSS 优化
   css: {
     extract: isProduction,
     sourceMap: false
   }
 }
-  

@@ -124,7 +124,6 @@ import { wgs84tobd09 } from '@/utils/coord'
 
 // 【优化】提取默认位置常量
 const DEFAULT_LOCATION = { lng: 120.019, lat: 30.274 } // 杭州 EFC 中心
-const DEFAULT_ZOOM = 16
 
 export default {
   name: 'BMap',
@@ -163,7 +162,7 @@ export default {
       const q = this.$route.query   // isFlash=1 闪送模式（严格为 1）
       this.isFlashMode = q.isFlash == 1
       this.isGasMode = q.isGas == 1 // isGas=1 燃气模式（严格为 1）
-    } catch (e) { 
+    } catch (e) {
       // 静默处理：路由查询参数解析失败不影响页面加载
       this.addLog('路由参数解析失败', 'warn')
     }
@@ -229,14 +228,14 @@ export default {
   beforeDestroy() {
     // 【优化】组件事件监听器清理，防止内存泄漏
     window.removeEventListener('resize', this.updateSuggestionStyle)
-    
+
     // 清理搜索建议相关的事件监听
     const inputEl = document.getElementById('searchInput')
     if (inputEl) {
       inputEl.removeEventListener('focus', this.updateSuggestionStyle)
       inputEl.removeEventListener('input', this.updateSuggestionStyle)
     }
-    
+
     // 清理地图相关监听器
     if (this.map) {
       this.map.removeEventListener('dragstart', this.blurInputHandler)
@@ -245,7 +244,7 @@ export default {
       this.map.removeEventListener('zoomend', this.blurInputHandler)
       this.map.removeEventListener('tilesloaded', this.onTilesLoadedHandler)
     }
-    
+
     this.addLog('组件已销毁，事件监听器已清理')
   },
   methods: {
@@ -255,7 +254,7 @@ export default {
         this.$refs.logPanel.addLog(message, type)
       }
     },
-    
+
     // 模糊输入处理函数（用于事件监听器清理）
     blurInputHandler() {
       const inputEl = document.getElementById('searchInput')
@@ -263,7 +262,7 @@ export default {
         inputEl.blur()
       }
     },
-    
+
     // tilesloaded 事件处理函数（用于事件监听器清理）
     onTilesLoadedHandler() {
       if (this.map) {
@@ -271,14 +270,14 @@ export default {
         this.initializeHeatmap()
       }
     },
-    
+
     // 地图组件就绪回调
     onMapReady({ BMap, map }) {
       try {
         if (!window.BMap) { window.BMap = BMap }
         this.map = map
         this.addLog('地图初始化成功')
-        
+
         // 地图交互时不弹起输入
         this.bindMapInteractionGuards()
         this.initAutocomplete()
@@ -294,10 +293,10 @@ export default {
       } catch (error) {
         this.addLog(`地图初始化失败：${error.message}`, 'error')
         this.$toast.fail('地图初始化失败')
-      } 
+      }
       this.setupMapEventListeners()
     },
-    
+
     setupMapEventListeners() {
       this.map.addEventListener('tilesloaded', this.onTilesLoadedHandler)
     },
@@ -308,13 +307,13 @@ export default {
     addDirectionalArrows(polyline) {
       try {
         if (!polyline || !this.map) return
-        
+
         // 检查 polyline 是否有 getPath 方法
         if (typeof polyline.getPath !== 'function') {
           this.addLog('polyline 没有 getPath 方法，跳过添加箭头', 'warn')
           return
         }
-        
+
         // 获取线条的路径点
         const path = polyline.getPath()
         if (!path || path.length < 2) return
@@ -450,24 +449,24 @@ export default {
       try {
         const inputEl = document.getElementById('searchInput')
         if (!this.map || !inputEl) return
-        
+
         this.map.addEventListener('dragstart', this.blurInputHandler)
         this.map.addEventListener('dragging', this.blurInputHandler)
         this.map.addEventListener('zoomstart', this.blurInputHandler)
         this.map.addEventListener('zoomend', this.blurInputHandler)
-      } catch (error) { 
+      } catch (error) {
         // 静默处理：地图交互守卫失败不影响核心功能
         this.addLog(`地图交互守卫设置失败：${error.message}`, 'warn')
       }
     },
     locateToCurrent() {
       this.addLog('用户点击定位按钮')
-      
+
       // 点击定位时调用安卓注入方法
       try { window.AndroidInterface.showFullAdFromWeb() } catch (error) {
         this.addLog(`调用安卓接口失败：${error.message}`, 'warn')
       }
-      
+
       // 【优化】使用通用定位方法
       this.getCurrentPosition({
         onSuccess: (bdPoint) => {
@@ -484,7 +483,7 @@ export default {
           this.locationPoint = defaultPoint
           this.startPoint = defaultPoint
           this.createOrUpdateUserMarker(defaultPoint)
-          
+
           if (error.code === 1) {
             this.showLocationTip = true
             this.locationPermission = 'denied'
@@ -609,7 +608,7 @@ export default {
       };
 
       this.addLog('开始获取当前位置')
-      
+
       // 【优化】使用通用定位方法
       this.getCurrentPosition({
         onSuccess: (bdPoint) => {
@@ -633,19 +632,19 @@ export default {
         try {
           // 检查是否有 BMapGL 或 BMap
           const BMapNS = window.BMapGL || window.BMap
-          
+
           if (!BMapNS || !BMapNS.Convertor) {
             return reject(new Error('BMap Convertor 未加载'))
           }
-          
+
           // 创建 Convertor 实例（使用 BMapGL 命名空间）
           const convertor = new BMapNS.Convertor()
-          
+
           // 创建坐标点数组
           const pointArr = [new BMapNS.Point(wgsLng, wgsLat)]
-          
+
           this.addLog(`开始调用 BMapGL.Convertor.translate(WGS84→BD09)`)
-          
+
           // 执行坐标转换
           // from=1 表示 WGS84 坐标系，to=5 表示转换为 BD09 坐标系
           convertor.translate(pointArr, 1, 5, (data) => {
@@ -667,7 +666,7 @@ export default {
         }
       })
     },
-    
+
     // 【通用方法】获取当前位置（HTML5 + BMapGL Convertor）
     // options: { enableHighAccuracy, timeout, maximumAge, needConvert, onSuccess, onError }
     getCurrentPosition(options = {}) {
@@ -679,7 +678,7 @@ export default {
         onSuccess, // 成功回调 (point) => {}
         onError // 错误回调 (error) => {}
       } = options
-      
+
       return new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
           const error = new Error('浏览器不支持 Geolocation')
@@ -688,16 +687,16 @@ export default {
           reject(error)
           return
         }
-        
+
         navigator.geolocation.getCurrentPosition(
           (position) => {
             // 保留六位小数
             const wgsLng = Math.round(position.coords.longitude * 1000000) / 1000000
             const wgsLat = Math.round(position.coords.latitude * 1000000) / 1000000
             const accuracy = position.coords.accuracy
-            
+
             this.addLog(`HTML5 定位成功 - WGS84: 经度=${wgsLng}, 纬度=${wgsLat}, 精度=${accuracy}米`)
-            
+
             // 如果需要坐标转换
             if (needConvert) {
               this.convertCoordinateByBaidu(wgsLng, wgsLat)
@@ -760,7 +759,7 @@ export default {
           this.endLocationText = this.currentLocationText
         }
       }
-      const errorHandler = (err) => { 
+      const errorHandler = (err) => {
         const startPoint = new window.BMap.Point(DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat)
         const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
         this.startPoint = startPoint
@@ -768,25 +767,25 @@ export default {
           this.endPoint = endPoint
         }
         this.createAndRunRidingRoute(startPoint, endPoint)
-        try { window.AndroidInterface.showFullAdFromWeb() } catch (error) { 
+        try { window.AndroidInterface.showFullAdFromWeb() } catch (error) {
           this.addLog(`调用安卓接口失败：${error.message}`, 'warn')
         }
       }
       this.isGoing = true
-      
+
       // 【优化】使用通用定位方法
       this.getCurrentPosition({
         onSuccess: (startPoint) => {
           this.addLog(`导航起点 - BD09: 经度=${startPoint.lng}, 纬度=${startPoint.lat}`)
           this.startPoint = startPoint
-          
+
           const endPoint = this.endPoint || this.locationPoint || this.map.getCenter()
           if (!this.endPoint) {
             this.endPoint = endPoint
           }
-          
+
           this.createAndRunRidingRoute(this.startPoint, this.endPoint)
-          try { window.AndroidInterface.showFullAdFromWeb() } catch (error) { 
+          try { window.AndroidInterface.showFullAdFromWeb() } catch (error) {
             this.addLog(`调用安卓接口失败：${error.message}`, 'warn')
           }
         },
@@ -920,7 +919,7 @@ export default {
       try {
         // 移除已有的用户定位标记
         if (this.currentUserMarker) {
-          try { this.map.removeOverlay(this.currentUserMarker) } catch (error) { 
+          try { this.map.removeOverlay(this.currentUserMarker) } catch (error) {
             this.addLog(`移除旧标记失败：${error.message}`, 'warn')
           }
           this.currentUserMarker = null
@@ -1008,7 +1007,7 @@ export default {
 
       // 先清理上一次搜索产生的标记
       try {
-        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (error) { 
+        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (error) {
           this.addLog(`移除标记失败：${error.message}`, 'warn')
         } })
       } catch (error) { /* ignore */ }
@@ -1091,7 +1090,7 @@ export default {
 
       // 先清理上一次搜索产生的标记
       try {
-        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (error) { 
+        (this.stationMarkers || []).forEach(m => { try { this.map.removeOverlay(m) } catch (error) {
           this.addLog(`移除标记失败：${error.message}`, 'warn')
         } })
       } catch (error) { /* ignore */ }
@@ -1120,7 +1119,7 @@ export default {
           const marker = this.createShopMarker(poi.point, poi)
           if (marker) this.stationMarkers.push(marker)
         })
-        
+
         this.$toast(`已加载"燃气营业厅"在附近的${limited.length}个结果`)
       }).catch((error) => {
         this.addLog(`燃气站点搜索失败：${error.message}`, 'error')
@@ -1133,15 +1132,15 @@ export default {
       try {
         const { title, address } = poi
         const { isGasMode } = this
-        
+
         // 同步位置信息
         this.locationPoint = this.endPoint = point
         this.currentLocationText = this.endLocationText = title
         this.showLocationCard = true
-        
+
         // 计算距离
         this.computeDistanceSilent(point)
-        
+
         // 创建信息窗
         const content = `<div style="font-size:14px;color:#333;line-height:1.6;">
           <div style="font-weight:600;margin-bottom:4px;">${title}</div>
@@ -1164,7 +1163,7 @@ export default {
         const distance = this.map.getDistance(defaultPoint, targetPoint)
         this.distance = Math.round(distance)
       }
-      
+
       // 【优化】使用通用定位方法
       this.getCurrentPosition({
         onSuccess: (bdPoint) => {
@@ -1189,7 +1188,7 @@ export default {
         this.distance = roundedDistance
         this.createShopMarker(targetPoint)
       }
-      
+
       // 【优化】使用通用定位方法
       this.getCurrentPosition({
         onSuccess: (bdPoint) => {

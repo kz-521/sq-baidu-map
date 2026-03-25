@@ -678,6 +678,37 @@ created() {
       }
     },
     
+    // WGS84 坐标转 BD09 坐标（通过百度 Convertor API）
+    convertCoordinateByBaidu(wgsLng, wgsLat) {
+      return new Promise((resolve, reject) => {
+        try {
+          const BMapNS = window.BMapGL || window.BMap
+          if (!BMapNS || !BMapNS.Convertor) {
+            return reject(new Error('BMap Convertor 未加载'))
+          }
+          const convertor = new BMapNS.Convertor()
+          const pointArr = [new BMapNS.Point(wgsLng, wgsLat)]
+          console.log('开始调用 Convertor.translate(WGS84→BD09)')
+          // from=1 表示 WGS84，to=5 表示 BD09
+          convertor.translate(pointArr, 1, 5, (data) => {
+            if (data.status === 0) {
+              const convertedPoint = data.points[0]
+              console.log(`Convertor 转换成功 - BD09: 经度=${convertedPoint.lng}, 纬度=${convertedPoint.lat}`)
+              resolve(convertedPoint)
+            } else {
+              const errorMsg = `Convertor 转换失败：status=${data.status}${data.message ? ', message=' + data.message : ''}`
+              console.warn(errorMsg)
+              reject(new Error(errorMsg))
+            }
+          })
+        } catch (error) {
+          const errorMsg = `Convertor 调用异常：${error.message}`
+          console.error(errorMsg)
+          reject(new Error(errorMsg))
+        }
+      })
+    },
+
     // 统一封装 Android 注入对象调用
     callAndroidMethod(methodName, ...args) {
       try {

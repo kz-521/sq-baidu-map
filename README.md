@@ -5,29 +5,33 @@
 - 商圈热力可视化（`/HeatMap/index`、`/SimpleMap/index` 简化示例）
 - 路径规划（`/RoutePlan/index` 支持取货点；`/SingleRoutePlan/index` 单段导航并支持类型切换）
 
-前端采用 Vue 2 + vue-router，样式使用 SCSS；后端提供基于 Express 的交通信息代理接口，便于本地联调与跨域访问。
+前端采用 Vue 2 + vue-router，样式使用 SCSS。
 
 ## 目录结构
 
 ```text
-sq-baidu-map/
-  ├─ public/index.html           # HTML 模板
+vue-admin-web/
+  ├─ public/index.html
   ├─ src/
-  │  ├─ main.js                  # 入口文件
+  │  ├─ main.js
+  │  ├─ App.vue
   │  ├─ router/index.js          # 路由定义
+  │  ├─ assets/
+  │  ├─ components/
   │  ├─ utils/
-  │  │  └─ coord.js             # 坐标转换工具
-  │  ├─ views/
-  │  │  ├─ BMap/index.vue       # 附近驿站与导航
-  │  │  ├─ HeatMap/index.vue    # 热力图（完整）
-  │  │  ├─ SimpleMap/index.vue  # 热力图（简化）
-  │  │  ├─ UrlMap/index.vue     # 空白地图页（中心点由 URL/Native 传入）
-  │  │  ├─ RoutePlan/index.vue  # 路径规划（含取货点）
-  │  │  └─ SingleRoutePlan/index.vue # 单段路径规划（驾车/骑行/步行）
-  │  └─ components/MapLicenseInfo.vue # 审图号信息
-  └─ server/
-     ├─ server.js               # 交通信息代理接口
-     └─ API_USAGE.md            # 后端接口使用说明
+  │  ├─ styles/
+  │  └─ views/
+  │     ├─ BMap/index.vue
+  │     ├─ HeatMap/index.vue
+  │     ├─ SimpleMap/index.vue
+  │     ├─ UrlMap/index.vue
+  │     ├─ RoutePlan/index.vue
+  │     ├─ SingleRoutePlan/index.vue
+  │     ├─ QuickRoute/index.vue
+  │     ├─ RealTimeTraffic/index.vue
+  │     ├─ SpeedCruise/index.vue
+  │     └─ 404.vue
+  └─ dist/（构建产物，可选）
 ```
 
 ## 运行环境
@@ -51,7 +55,9 @@ npm run dev
 
 默认在 `http://localhost:8080` 启动。
 
-3) 启动后端（交通信息代理，可选）
+3) （可选）启动后端交通代理
+
+当前仓库未包含 `server/` 后端目录；如果你补齐后端代码，可以使用：
 
 ```bash
 npm run server:install   # 首次安装 server 依赖
@@ -59,8 +65,6 @@ npm run server:dev       # 开发模式（nodemon）
 # 或
 npm run server           # 生产模式
 ```
-
-默认在 `http://localhost:3001` 提供接口。
 
 4) 构建
 
@@ -75,64 +79,155 @@ AK 申请地址见百度地图开放平台文档（登录控制台创建应用�
 
 ## 可用路由与示例 URL
 
-- BMap（附近驿站与导航）
-  - 路由：`/BMap/index`
-- HeatMap（商圈热力图）
-  - 路由：`/HeatMap/index`
-- RoutePlan（两段路径规划：定位点 -> 取货点 -> 目的地）
-  - 路由：`/RoutePlan/index`
-  - 支持 URL 参数：
-    - `lat`：目的地纬度
-    - `lng`：目的地经度
-    - `picklat`：取货点纬度
-    - `picklng`：取货点经度
-  - 示例：
-    ```
-    http://localhost:8080/#/RoutePlan/index?lat=30.361424&lng=120.054475&picklat=30.318519&picklng=120.085846
-    ```
-- SingleRoutePlan（单段路径规划，支持驾车/骑行/步行）
-  - 路由：`/SingleRoutePlan/index`
-  - URL 参数：
-    - `lat`：目的地纬度
-    - `lng`：目的地经度
-    - `type`：路线类型，`0`=驾车、`1`=骑行、`2`=步行（默认 0）
-  - 示例：
-    ```
-    http://localhost:8080/#/SingleRoutePlan/index?lat=30.361424&lng=120.054475&type=1
-    ```
-- SimpleMap（热力图简化示例）
-  - 路由：`/SimpleMap/index`
-- UrlMap（根据经纬度展示的空白地图页，可供外部 H5 / Native 调用）
-  - 路由：`/UrlMap/index`
-  - URL 参数：
-    - `lat`：地图中心纬度
-    - `lng`：地图中心经度
-    - `isJump`：是否显示“跳转”按钮（`true`/`false`，默认不显示）
-    - `showCurrent`：是否显示“定位到当前中心”按钮（`true`/`false`，默认不显示）
-  - 说明：
-    - 地图默认以 `lat`/`lng` 为中心，并在该点添加 Marker；
-    - 当 `isJump=true` 时，右下角会出现“跳转”按钮，点击后会将中心切换到示例坐标 `lng=120.119, lat=30.274`；
-    - 当 `showCurrent=true` 时，右下角会出现“定位”按钮，点击后将视角拉回当前中心点。
-  - 示例：
-    ```
-    http://localhost:8080/#/UrlMap/index?lat=30.274&lng=120.119&isJump=true&showCurrent=true
-    ```
+说明：以下示例以 `http://localhost:8080/#/` 作为前缀（hash 模式）。
 
-说明：页面内部对经纬度常见颠倒情况做了纠正；默认会尝试浏览器定位，失败时使用内置缺省点。
+### 根路径重定向
+- `/#/` -> `/BMap/index`
+- `/#/BMap` -> `/BMap/index`
+
+### 404
+- 路由：`/404`
+示例：
+```
+http://localhost:8080/#/404
+```
+
+### BMap（附近驿站与导航）
+- 路由：`/BMap/index`
+- 可选参数（严格为数值 `1`）：
+  - `isFlash=1`：闪送模式
+  - `isGas=1`：燃气模式
+示例：
+```
+http://localhost:8080/#/BMap/index
+http://localhost:8080/#/BMap/index?isFlash=1
+http://localhost:8080/#/BMap/index?isGas=1
+```
+
+### HeatMap（商圈热力图）
+- 路由：`/HeatMap/index`
+示例：
+```
+http://localhost:8080/#/HeatMap/index
+```
+
+### RoutePlan（路径规划：定位点 -> 取货点 -> 目的地）
+- 路由：`/RoutePlan/index`
+- URL 参数：
+  - `lat`：目的地纬度
+  - `lng`：目的地经度
+  - `picklat`：取货点纬度
+  - `picklng`：取货点经度
+示例：
+```
+http://localhost:8080/#/RoutePlan/index?lat=30.361424&lng=120.054475&picklat=30.318519&picklng=120.085846
+```
+
+### SingleRoutePlan（单段路径规划：驾车/骑行/步行）
+- 路由：`/SingleRoutePlan/index`
+- URL 参数：
+  - `lat`：目的地纬度
+  - `lng`：目的地经度
+  - `type`：路线类型，`0`=驾车、`1`=骑行、`2`=步行（默认 `0`）
+示例：
+```
+http://localhost:8080/#/SingleRoutePlan/index?lat=30.361424&lng=120.054475&type=1
+```
+
+### QuickRoute（两点之间路线规划）
+- 路由：`/QuickRoute/index`
+- URL 参数：
+  - `sLat`/`sLng`：起点（纬度/经度）
+  - `eLat`/`eLng`：终点（纬度/经度）
+  - `type`：路线类型，`0`=驾车、`1`=骑行、`2`=步行（默认 `0`）
+示例：
+```
+http://localhost:8080/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&type=1&sLat=30.280812&sLng=120.001767
+```
+
+### SimpleMap（热力图简化示例）
+- 路由：`/SimpleMap/index`
+示例：
+```
+http://localhost:8080/#/SimpleMap/index
+```
+
+### UrlMap（根据经纬度展示空白地图页）
+- 路由：`/UrlMap/index`
+- URL 参数：
+  - `lat`：地图中心纬度
+  - `lng`：地图中心经度
+  - `isJump`：是否显示“跳转”按钮（字符串 `true`/`false`）
+  - `showCurrent`：是否显示“定位到当前中心”按钮（字符串 `true`/`false`）
+示例：
+```
+http://localhost:8080/#/UrlMap/index?lat=30.274&lng=120.119&isJump=true&showCurrent=true
+```
+
+### RealTimeTraffic（定位点地图）
+- 路由：`/RealTimeTraffic/index`
+- URL 参数（建议必传）：
+  - `lat`：地图中心纬度
+  - `lng`：地图中心经度
+示例：
+```
+http://localhost:8080/#/RealTimeTraffic/index?lat=30.274&lng=120.119
+```
+
+### SpeedCruise（速度巡航）
+- 路由：`/SpeedCruise/index`
+- URL 参数（建议必传）：
+  - `lat`：地图中心纬度
+  - `lng`：地图中心经度
+示例：
+```
+http://localhost:8080/#/SpeedCruise/index?lat=30.276658&lng=120.015657
+```
+
+说明：以上参数名/含义以各页面读取 `this.$route.query` 的实现为准；未传入经纬度的页面会尝试浏览器定位或使用默认点。
+
+## 所有页面链接汇总
+
+下面是当前仓库 README 中出现过的全部链接（已去重），建议你直接复制使用：
+
+```text
+http://localhost:8080/#/404
+http://localhost:8080/#/BMap/index
+http://localhost:8080/#/BMap/index?isFlash=1
+http://localhost:8080/#/BMap/index?isGas=1
+http://localhost:8080/#/HeatMap/index
+http://localhost:8080/#/RoutePlan/index?lat=30.361424&lng=120.054475&picklat=30.318519&picklng=120.085846
+http://localhost:8080/#/SingleRoutePlan/index?lat=30.361424&lng=120.054475&type=1
+http://localhost:8080/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&type=1&sLat=30.280812&sLng=120.001767
+http://localhost:8080/#/SimpleMap/index
+http://localhost:8080/#/UrlMap/index?lat=30.274&lng=120.119&isJump=true&showCurrent=true
+http://localhost:8080/#/RealTimeTraffic/index?lat=30.274&lng=120.119
+http://localhost:8080/#/SpeedCruise/index?lat=30.276658&lng=120.015657
+/#/ -> /BMap/index
+/#/BMap -> /BMap/index
+
+https://earn-h5.shengqu99.com/#/RoutePlan/index?lat=30.361424&lng=120.054475&picklat=30.318519&picklng=120.085846
+https://earn-h5.shengqu99.com/#/HeatMap/index
+https://hamster-chat.dns.army/#/HeatMap/index
+https://earn-h5.shengqu99.com/#/BMap/index
+https://hamster-chat.dns.army/#/BMap/index
+https://earn-h5.shengqu99.com/#/BMap/index?isFlash=1
+https://earn-h5.shengqu99.com/#/BMap/index?isGas=1
+https://earn-h5.shengqu99.com/#/RoutePlan/index
+https://hamster-chat.dns.army/#/SingleRoutePlan/index?lat=30.289222&lng=120.06458&type=1
+https://earn-h5.shengqu99.com/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&type=1&sLat=30.280812&sLng=120.001767
+https://hamster-chat.dns.army/#/QuickRoute/index?eLat=30.289222&eLng=120.06458&type=1&sLat=30.280812&sLng=120.001767
+https://earn-h5.shengqu99.com/#/RealTimeTraffic/index
+https://hamster-chat.dns.army/#/RealTimeTraffic/index
+https://earn-h5.shengqu99.com/#/SpeedCruise/index?lat=30.276658&lng=120.015657
+https://hamster-chat.dns.army/#/SpeedCruise/index?lat=30.276658&lng=120.015657
+https://earn-h5.shengqu99.com/#/SimpleMap/index
+https://hamster-chat.dns.army/#/SimpleMap/index
+```
 
 ## 后端交通信息 API（可选）
 
-- 基址：`http://localhost:3001`
-- 接口：`GET /api/baidu/traffic`
-- 参数：
-  - `center`：中心点坐标，格式为 `纬度,经度`（注意纬度在前）
-  - `radius`：查询半径（米），1-1000
-- 例子：
-  ```
-  http://localhost:3001/api/baidu/traffic?center=39.912078,116.464303&radius=200
-  ```
-
-更多使用细节见 `server/API_USAGE.md`。
+当前仓库未包含 `server/` 后端代码与接口文档，因此不在此处展开接口细节。如你在其它仓库/旧版本中补齐后端，可按其说明配置并联调。
 
 ## 常见问题（FAQ）
 
@@ -152,9 +247,7 @@ AK 申请地址见百度地图开放平台文档（登录控制台创建应用�
   - 组件里对折线样式做了自定义与阶段区分，可按需调整。
 
 - 交通信息接口报错？
-  - 后端 `ak` 是否有效；
-  - `center` 参数需为 `纬度,经度`，`radius` 在 1-1000；
-  - 查看后端日志定位百度 API 返回内容。
+  - 当前仓库未包含 `server/` 后端接口；如你接入了交通代理服务，请检查后端配置、请求参数格式以及后端日志。
 
 ## 可用 npm 脚本
 
@@ -165,10 +258,6 @@ AK 申请地址见百度地图开放平台文档（登录控制台创建应用�
   "build:prod": "vue-cli-service build",
   "build:stage": "vue-cli-service build --mode staging",
   "preview": "node build/index.js --preview",
-  "lint": "vue-cli-service lint",
-  "test:unit": "jest --clearCache && vue-cli-service test:unit",
-  "test:ci": "npm run lint && npm run test:unit",
-  "svgo": "svgo -f src/icons/svg --config=src/icons/svgo.yml",
   "server": "cd server && npm start",
   "server:dev": "cd server && npm run dev",
   "server:install": "cd server && npm install"
